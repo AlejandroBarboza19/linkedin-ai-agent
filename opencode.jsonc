@@ -1,16 +1,27 @@
 {
-  "$schema": "https://opencode.ai/schema/opencode.json",
-  "version": "1.0",
-  "agents": [
-    {
-      "name": "linkedin-agent",
-      "path": "agents/linkedin_agent.md"
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "linkedin_server": {
+      "type": "local",
+      "command": ["python", "-m", "mcp.linkedin_server.server"],
+      "enabled": true
     }
-  ],
-  "skills": [
-    {
-      "name": "linkedin-poster",
-      "path": "skills/linkedin_poster/skill.md"
+  },
+  "agent": {
+    "linkedin-agent": {
+      "description": "LinkedIn content automation agent using Playwright with Human in the Loop",
+      "prompt": "{file:agents/linkedin_agent.md}"
     }
-  ]
+  },
+  "skills": {
+    "paths": ["skills/linkedin_poster"]
+  },
+  "model": "openrouter/glm-5.2",
+  "provider": {
+    "openrouter": {
+      "options": {
+        "apiKey": "{env:OPENROUTER_API_KEY}"
+      }
+    }
+  }
 }
