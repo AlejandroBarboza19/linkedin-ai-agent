@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/schema/opencode.json",
+  "version": "1.0",
+  "agents": [
+    {
+      "name": "linkedin-agent",
+      "path": "agents/linkedin_agent.md"
+    }
+  ],
+  "skills": [
+    {
+      "name": "linkedin-poster",
+      "path": "skills/linkedin_poster/skill.md"
+    }
+  ]
+}
