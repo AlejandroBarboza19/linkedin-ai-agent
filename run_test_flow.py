@@ -1,3 +1,21 @@
+"""
+Test / demo flow for the LinkedIn AI Agent.
+
+This script exercises all MCP tools directly (bypassing the OpenCode agent)
+to verify the browser automation pipeline end-to-end.
+
+HITL confirmation uses a file signal (.hitl_signal) as a simple mechanism
+for automated and CI testing.
+
+For the REAL agent flow (via OpenCode conversation), see:
+  - agents/linkedin_agent.md
+  - skills/linkedin_poster/skill.md
+  - .opencode/skills/linkedin-poster/SKILL.md
+
+In the real flow, HITL confirmation happens through chat conversation,
+NOT through file signals.
+"""
+
 import asyncio
 import os
 import sys
@@ -12,21 +30,23 @@ async def clean_signal():
         os.remove(SIGNAL_FILE)
 
 
-async def wait_for_signal(timeout_minutes=60):
+async def wait_for_signal(label="confirmacion", timeout_minutes=60):
     start = time.time()
     print(f"\n{'='*50}")
-    print("  HITL: Se requiere confirmacion para publicar")
+    print(f"  HITL: Se requiere {label}")
     print(f"  En otra terminal, ejecuta:")
-    print(f"    echo yes > {SIGNAL_FILE}")
+    print(f"    Set-Content -Path {SIGNAL_FILE} -Value yes")
     print(f"  O para cancelar:")
-    print(f"    echo no > {SIGNAL_FILE}")
+    print(f"    Set-Content -Path {SIGNAL_FILE} -Value no")
     print(f"{'='*50}\n", flush=True)
     while time.time() - start < timeout_minutes * 60:
         if os.path.exists(SIGNAL_FILE):
-            with open(SIGNAL_FILE) as f:
-                answer = f.read().strip().lower()
+            with open(SIGNAL_FILE, "rb") as f:
+                raw = f.read()
+            content = raw.decode("utf-8", errors="replace")
+            content = "".join(c for c in content if c.isalnum()).lower()
             os.remove(SIGNAL_FILE)
-            return answer == "yes"
+            return content == "yes"
         await asyncio.sleep(2)
     print("  Timeout alcanzado, cancelando.", flush=True)
     return False
@@ -39,32 +59,40 @@ async def main():
     sid = result["session_id"]
     print(f"  Session ID: {sid}", flush=True)
 
-    # Step 2: Wait for human auth
-    print("\n[2/5] ESPERANDO AUTENTICACION HUMANA", flush=True)
+    # Step 2: Wait for user to confirm login manually
+    print("\n[2/5] ESPERANDO QUE INICIES SESION", flush=True)
     print("  El navegador se abrio en linkedin.com/login", flush=True)
-    print("  Inicia sesion y resuelve 2FA manualmente.", flush=True)
-    print("  La herramienta monitoreara automaticamente cuando completes el login.\n", flush=True)
+    print("  Inicia sesion y resuelve 2FA manualmente en el navegador.", flush=True)
+    print("  Cuando hayas iniciado sesion, confirma en OTRA terminal:\n", flush=True)
+    await clean_signal()
+    login_confirmed = await wait_for_signal("iniciar sesion en el navegador")
 
-    auth_result = await wait_for_human_auth(sid, timeout_minutes=5)
-    print(f"  Resultado: {auth_result['message']}", flush=True)
-
-    if auth_result["status"] != "ok":
-        print("  No se pudo autenticar. Cerrando...", flush=True)
+    if not login_confirmed:
+        print("  Login cancelado. Cerrando...", flush=True)
         await close_browser(sid)
         return
+
+    # Confirm auth status in the session
+    auth_result = await wait_for_human_auth(sid, timeout_minutes=0.1)
+    print(f"  Auth: {auth_result['message']}", flush=True)
 
     # Step 3: Verify session
     print("\n[3/5] Verificando sesion...", flush=True)
     verify_result = await verify_active_session(sid)
     print(f"  {verify_result}", flush=True)
 
-    # Step 4: HITL signal
+    if not verify_result.get("active"):
+        print("  Sesion no activa. Cerrando...", flush=True)
+        await close_browser(sid)
+        return
+
+    # Step 4: Confirm publish
+    print("\n[4/5] CONFIRMAR PUBLICACION", flush=True)
     await clean_signal()
-    confirmed = await wait_for_signal()
+    confirmed = await wait_for_signal("confirmar publicacion")
 
     if confirmed:
-        # Step 5: Create post (prepares editor, does NOT auto-publish)
-        print("\n[4/5] Preparando post en el editor...", flush=True)
+        print("\n  Preparando post en el editor...", flush=True)
         post_result = await create_post(sid, "Hola mundo")
         print(f"  {post_result}", flush=True)
 
@@ -81,7 +109,7 @@ async def main():
     else:
         print("\n  Publicacion cancelada por el usuario.", flush=True)
 
-    # Step 6: Close browser
+    # Step 5: Close browser
     print("\n[5/5] Cerrando navegador...", flush=True)
     close_result = await close_browser(sid)
     print(f"  {close_result}", flush=True)

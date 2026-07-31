@@ -2,7 +2,7 @@
 
 ## Objective
 
-Publicar contenido en LinkedIn usando Playwright para navegación real. La skill orquesta la validación del contenido, la confirmación humana, el flujo de login manual con HITL, y la publicación vía MCP `linkedin_server`.
+Publicar contenido en LinkedIn usando Playwright para navegación real (navegador visible). La skill orquesta la validación del contenido, la confirmación humana vía conversación, el flujo de login manual con HITL, y la publicación vía MCP `linkedin_server`.
 
 ## Activation
 
@@ -14,7 +14,7 @@ La skill se activa cuando el usuario solicita:
 
 ## Dependencies
 
-- **MCP Server:** `linkedin_server` — controla Playwright (navegador headless).
+- **MCP Server:** `linkedin_server` — controla Playwright (navegador visible, no headless).
 - **Agent:** `linkedin_agent` — define la identidad y reglas HITL.
 - **Logger:** `src/telemetry/logger.py` — registra cada acción para auditoría.
 
@@ -33,67 +33,48 @@ Antes de abrir el navegador, la skill debe validar:
 ## Publication Flow
 
 ```
-1. Redactar o recibir contenido del usuario
+1. Redactar o recibir contenido del usuario (conversación)
        │
 2. Ejecutar validaciones pre-flight
        │
-3. Mostrar preview al usuario
+3. Mostrar preview al usuario por chat
        │
 4. [HITL] ¿Usuario confirma preview?
        ├── Sí → continuar
        └── No → devolver al usuario para edición
        │
-5. Iniciar Playwright vía MCP (navegador headless)
+5. MCP: open_browser_tool → navegador visible en linkedin.com/login
        │
-6. Navegar a linkedin.com/login
+6. [HITL] El agente notifica: "Navegador abierto. Inicia sesión."
+       El usuario ingresa credenciales + 2FA manualmente en el navegador.
        │
-7. [HITL] Esperar login manual del usuario
-       │   - Usuario ingresa email y contraseña
-       │   - Usuario resuelve 2FA si es necesario
-       │   - El agente detecta que la sesión está activa
+7. MCP: wait_for_human_auth_tool → detecta que la URL salió de /login
        │
-8. Navegar a la página de creación de post
+8. MCP: verify_session_tool → confirma sesión activa
        │
-9. Rellenar contenido en el editor
+9. MCP: create_post_tool(content) → escribe contenido en el editor
+       │   (el botón Publicar NO se pulsa automáticamente)
        │
-10. [HITL] Mostrar confirmación final
-       ├── Sí → hacer clic en "Publicar"
-       └── No → cerrar navegador sin publicar
+10. [HITL] El agente pregunta por chat:
+    "El post está listo en el editor. Revisa el contenido
+    y haz clic en 'Publicar' si estás de acuerdo."
        │
-11. Notificar resultado
+11. [HITL] Usuario hace clic en "Publicar" manualmente en el navegador.
        │
-12. Cerrar navegador (las cookies se descartan automáticamente)
+12. MCP: close_browser_tool → cerrar navegador, descartar cookies
+       │
+13. El agente notifica resultado por chat.
 ```
 
 ## Human in the Loop (HITL)
 
-Esta skill requiere intervención humana en dos puntos críticos:
+Tres puntos requieren intervención humana obligatoria:
 
-1. **Login y 2FA** — El agente abre linkedin.com/login y espera. El usuario debe ingresar sus credenciales y resolver cualquier 2FA manualmente. El agente nunca toca los campos de contraseña ni maneja códigos.
-2. **Confirmación de publicación** — La skill nunca publica sin confirmación explícita del usuario.
+1. **Confirmación de preview** — El agente muestra el contenido por chat y pregunta antes de abrir el navegador.
+2. **Login y 2FA** — El agente abre linkedin.com/login y espera. El usuario ingresa credenciales y resuelve 2FA manualmente. El agente nunca toca los campos de contraseña ni maneja códigos.
+3. **Publicación final** — El agente escribe el contenido en el editor pero nunca pulsa "Publicar". El usuario hace clic manualmente tras revisión visual.
 
-Preview mostrado antes de abrir el navegador:
-
-```
-📝 PREVIEW
-─────────────────────────
-{texto del post}
-
-¿Confirmas que quieres publicar esto?
-Escribe "sí" para continuar o "no" para editar.
-```
-
-Confirmación final antes de hacer clic en "Publicar":
-
-```
-⚠️ CONFIRMACIÓN FINAL
-─────────────────────────
-El navegador está listo en linkedin.com.
-El post está escrito en el editor.
-
-¿Confirmas que el contenido es correcto y deseas publicar?
-Escribe "sí" para publicar o "no" para cerrar sin publicar.
-```
+La comunicación HITL ocurre siempre por conversación (chat), no por archivos de señal ni comandos de consola.
 
 ## Security Restrictions
 

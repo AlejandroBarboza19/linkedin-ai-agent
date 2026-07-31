@@ -1,0 +1,15 @@
+services:
+  linkedin-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linkedin-ai-agent:latest
+    container_name: linkedin-mcp-server
+    env_file:
+      - .env
+    restart: unless-stopped
+    # HITL flows require a visible browser on the host.
+    # This service packages the server for environment validation and CI.
+    # Run locally with `python run_test_flow.py` for the full HITL flow.
+    stdin_open: true
+    tty: true

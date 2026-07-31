@@ -16,11 +16,11 @@
   "skills": {
     "paths": ["skills/linkedin_poster"]
   },
-  "model": "openrouter/glm-5.2",
+  "model": "zai/glm-5.2",
   "provider": {
-    "openrouter": {
+    "zai": {
       "options": {
-        "apiKey": "{env:OPENROUTER_API_KEY}"
+        "apiKey": "{file:.opencode/zai-key}"
       }
     }
   }
