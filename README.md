@@ -18,7 +18,7 @@ Automate LinkedIn content publication through a browser-based agent that respect
 │  ┌─────────────────────────────────────────────────────┐│
 │  │  agent: linkedin-agent                              ││
 │  │  prompt: agents/linkedin_agent.md                   ││
-│  │  model: openrouter/glm-5.2                          ││
+│  │  model: zai/glm-5.2                                 ││
 │  └──────────────┬──────────────────────────────────────┘│
 │                 │                                       │
 │  ┌──────────────▼──────────────────────────────────────┐│
@@ -145,9 +145,6 @@ Five tools registered via the MCP SDK v2 (`@server.tool()` decorator):
 linkedin-ai-agent/
 ├── agents/
 │   └── linkedin_agent.md           # Agent definition (identity, safety rules)
-├── skills/
-│   └── linkedin_poster/
-│       └── skill.md                # Skill definition (validation, flow, HITL)
 ├── mcp/
 │   └── linkedin_server/
 │       ├── __init__.py
@@ -156,23 +153,30 @@ linkedin-ai-agent/
 ├── src/
 │   ├── core/
 │   │   ├── agent_runner.py         # Placeholder
-│   │   └── config.py               # Pydantic settings (env file)
+│   │   └── config.py               # Pydantic settings (ZAI_API_KEY, env file)
 │   ├── services/
-│   │   └── linkedin_flow.py        # Placeholder (import path incomplete)
+│   │   └── linkedin_flow.py        # publish_post → create_post (MCP tools)
 │   └── telemetry/
 │       └── logger.py               # Logging setup
 ├── tests/
 │   ├── test_mcp.py                 # 24 tests: MCP tools with mocked Playwright
-│   ├── test_agent.py               # Placeholder
-│   └── test_config.py              # Placeholder
+│   ├── test_agent.py               # Agent definition + skill frontmatter
+│   ├── test_config.py              # Settings: defaults + env vars
+│   └── test_harness.py             # HITL file-signal harness
+├── scripts/
+│   ├── run.ps1                     # Windows launcher (loads .env → zai-key)
+│   └── run.sh                      # Linux/macOS launcher (loads .env → zai-key)
 ├── .opencode/
 │   └── skills/
 │       └── linkedin-poster/
-│           └── SKILL.md            # Auto-discovered skill copy for OpenCode
+│           └── SKILL.md            # Auto-discovered skill for OpenCode
+├── Dockerfile                      # MCP server image (Python + Chromium)
+├── docker-compose.yml              # Compose service definition
 ├── opencode.jsonc                  # OpenCode configuration (MCP, agent, model)
 ├── pyproject.toml                  # Python dependencies and project metadata
+├── conftest.py                     # Pytest path setup (root imports)
 ├── run_test_flow.py                # End-to-end flow test (direct tool calls)
-├── .github/workflows/ci.yml        # CI pipeline (install + pytest)
+├── .github/workflows/ci.yml        # CI pipeline (ruff + pytest + docker build)
 └── .env.example                    # Environment variable template
 ```
 
@@ -183,7 +187,7 @@ linkedin-ai-agent/
 - **Python** >= 3.11
 - **Chromium** browser (installed via Playwright)
 - **OpenCode** CLI (for agent-based execution) — optional, direct tool invocation works without it
-- **OpenRouter API key** (if using the configured GLM model via OpenCode)
+- **ZAI API key** (free, from https://z.ai) if using the configured GLM model via OpenCode
 
 ---
 
@@ -210,10 +214,10 @@ playwright install chromium
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set your OpenRouter API key:
+Copy `.env.example` to `.env` and set your ZAI API key:
 
 ```env
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
+ZAI_API_KEY=your-key-here
 LOG_LEVEL=INFO
 ```
 
@@ -256,15 +260,15 @@ This starts the MCP server in stdio mode. It validates that all dependencies res
 # 1. Copiar el archivo de ejemplo
 cp .env.example .env
 
-# 2. Editar .env y poner tu API key de OpenRouter:
-#    OPENROUTER_API_KEY=sk-or-v1-tu-key-aqui
+# 2. Editar .env y poner tu API key de ZAI (https://z.ai):
+#    ZAI_API_KEY=tu-key-aqui
 
 # 3. Ejecutar:
 ./scripts/run.sh "Crea un post en LinkedIn diciendo Hola mundo"   # Linux / macOS
 .\scripts\run.ps1 "Crea un post en LinkedIn diciendo Hola mundo"  # Windows
 ```
 
-El script lee la key de `.env`, la escribe en `.opencode/openrouter-key`, y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
+El script lee la key de `.env`, la escribe en `.opencode/zai-key`, y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
 
 ### Test / demo flow (direct tool calls)
 
@@ -286,7 +290,7 @@ Usa los scripts de `scripts/` para cargar `.env` automáticamente (ver [Ejecutar
 ./scripts/run.sh "Write a post about AI trends"
 ```
 
-O manualmente (requiere la key en `.opencode/openrouter-key`):
+O manualmente (requiere la key en `.opencode/zai-key`):
 
 ```bash
 opencode
@@ -323,15 +327,18 @@ pytest -v
 pytest tests/test_mcp.py -v
 ```
 
-**Current test coverage (26 tests):**
+**Current test coverage (33 tests):**
 
 | Test file | Tests | Scope |
 |---|---|---|
 | `tests/test_mcp.py` | 24 | MCP tools with full Playwright mocking |
-| `tests/test_agent.py` | 1 | Placeholder |
-| `tests/test_config.py` | 1 | Placeholder |
+| `tests/test_agent.py` | 3 | Agent definition + skill frontmatter |
+| `tests/test_config.py` | 2 | Settings defaults and env vars |
+| `tests/test_harness.py` | 4 | HITL file-signal harness |
 
 All MCP tool functions are tested with mocked `async_playwright`, covering success paths, error handling, and the full happy-path flow.
+
+**CI pipeline (`.github/workflows/ci.yml`):** `ruff check .` → `pytest` → `docker build` (validates the MCP server image).
 
 ---
 
@@ -354,9 +361,8 @@ All MCP tool functions are tested with mocked `async_playwright`, covering succe
 |---|---|---|
 | **No session persistence** | Sessions are in-memory only. If the MCP connection drops, the browser closes. | Implement browser context serialization or a long-running server with keepalive. |
 | **Locale-dependent selectors** | The "Start a post" button selector targets Spanish text (`name="Crear"`). Fails on English or other locales. | Use ARIA role selectors or detect locale from page metadata. |
-| **`src/services/linkedin_flow.py`** | Imports a non-existent `linkedin_post` function. The file is a stub. | Wire it to `create_post` from `mcp.linkedin_server.tools`. |
 | **`src/core/agent_runner.py`** | Empty placeholder. | Implement the runner that bridges the OpenCode agent to the MCP tools. |
-| **No CI e2e test** | The CI workflow (`pytest`) only runs unit tests with mocks. Real Playwright tests require a display server. | Add a `docker-compose` CI job with `xvfb` for headful Playwright in CI. |
+| **No CI e2e test** | The CI workflow only runs unit tests with mocks. Real Playwright tests require a display server. | Add a CI job with `xvfb` for headful Playwright in CI. |
 | **No image/video support** | Currently only plain text posts. | Extend `create_post_tool` to handle media uploads through the LinkedIn editor. |
 | **Error recovery** | If the user closes the browser tab mid-flow, the tool returns an error and exits. | Add browser crash detection and session recovery logic. |
 | **LinkedIn DOM changes** | Selectors (`div[role="button"]`, `div[contenteditable="true"]`) may break if LinkedIn updates its UI. | Add a selector health-check tool and fallback strategies. |

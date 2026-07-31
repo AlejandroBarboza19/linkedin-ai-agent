@@ -1,12 +1,6 @@
 from mcp.server import MCPServer
 
-from .tools import (
-    open_browser as tools_open_browser,
-    wait_for_human_auth as tools_wait_for_human_auth,
-    verify_active_session as tools_verify_active_session,
-    create_post as tools_create_post,
-    close_browser as tools_close_browser,
-)
+from . import tools
 
 server = MCPServer(
     "linkedin_server",
@@ -20,7 +14,7 @@ server = MCPServer(
 
 @server.tool(name="open_browser_tool", description="Abre un navegador visible (no headless) en linkedin.com/login. Devuelve un session_id.")
 async def open_browser_tool(session_id: str = "") -> str:
-    return str(await tools_open_browser(session_id or None))
+    return str(await tools.open_browser(session_id or None))
 
 
 @server.tool(
@@ -28,7 +22,7 @@ async def open_browser_tool(session_id: str = "") -> str:
     description="Espera a que el usuario haga login y resuelva 2FA manualmente en el navegador visible.",
 )
 async def wait_for_human_auth_tool(session_id: str, timeout_minutes: int = 5) -> str:
-    return str(await tools_wait_for_human_auth(session_id, timeout_minutes))
+    return str(await tools.wait_for_human_auth(session_id, timeout_minutes))
 
 
 @server.tool(
@@ -36,7 +30,7 @@ async def wait_for_human_auth_tool(session_id: str, timeout_minutes: int = 5) ->
     description="Verifica si la sesión de LinkedIn sigue activa.",
 )
 async def verify_session_tool(session_id: str) -> str:
-    return str(await tools_verify_active_session(session_id))
+    return str(await tools.verify_active_session(session_id))
 
 
 @server.tool(
@@ -44,7 +38,7 @@ async def verify_session_tool(session_id: str) -> str:
     description="Rellena el contenido en el editor de LinkedIn y prepara la publicación.",
 )
 async def create_post_tool(session_id: str, content: str) -> str:
-    return str(await tools_create_post(session_id, content))
+    return str(await tools.create_post(session_id, content))
 
 
 @server.tool(
@@ -52,7 +46,7 @@ async def create_post_tool(session_id: str, content: str) -> str:
     description="Cierra el navegador y descarta las cookies de sesión.",
 )
 async def close_browser_tool(session_id: str) -> str:
-    return str(await tools_close_browser(session_id))
+    return str(await tools.close_browser(session_id))
 
 
 def main():

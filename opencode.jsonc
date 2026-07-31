@@ -13,9 +13,6 @@
       "prompt": "{file:agents/linkedin_agent.md}"
     }
   },
-  "skills": {
-    "paths": ["skills/linkedin_poster"]
-  },
   "model": "zai/glm-5.2",
   "provider": {
     "zai": {

@@ -1,5 +1,5 @@
-from mcp.linkedin_server.tools import linkedin_post
+from mcp.linkedin_server.tools import create_post
 
 
-async def publish_post(content: str) -> dict:
-    return await linkedin_post(content)
+async def publish_post(session_id: str, content: str) -> dict:
+    return await create_post(session_id, content)

@@ -9,7 +9,6 @@ for automated and CI testing.
 
 For the REAL agent flow (via OpenCode conversation), see:
   - agents/linkedin_agent.md
-  - skills/linkedin_poster/skill.md
   - .opencode/skills/linkedin-poster/SKILL.md
 
 In the real flow, HITL confirmation happens through chat conversation,
@@ -18,9 +17,15 @@ NOT through file signals.
 
 import asyncio
 import os
-import sys
 import time
-from mcp.linkedin_server.tools import open_browser, wait_for_human_auth, verify_active_session, create_post, close_browser
+
+from mcp.linkedin_server.tools import (
+    close_browser,
+    create_post,
+    open_browser,
+    verify_active_session,
+    wait_for_human_auth,
+)
 
 SIGNAL_FILE = ".hitl_signal"
 
@@ -30,22 +35,28 @@ async def clean_signal():
         os.remove(SIGNAL_FILE)
 
 
+def _read_signal() -> str:
+    if not os.path.exists(SIGNAL_FILE):
+        return ""
+    with open(SIGNAL_FILE, "rb") as f:
+        raw = f.read()
+    os.remove(SIGNAL_FILE)
+    content = raw.decode("utf-8", errors="replace")
+    return "".join(c for c in content if c.isalnum()).lower()
+
+
 async def wait_for_signal(label="confirmacion", timeout_minutes=60):
     start = time.time()
-    print(f"\n{'='*50}")
+    print("=" * 50)
     print(f"  HITL: Se requiere {label}")
-    print(f"  En otra terminal, ejecuta:")
+    print("  En otra terminal, ejecuta:")
     print(f"    Set-Content -Path {SIGNAL_FILE} -Value yes")
-    print(f"  O para cancelar:")
+    print("  O para cancelar:")
     print(f"    Set-Content -Path {SIGNAL_FILE} -Value no")
-    print(f"{'='*50}\n", flush=True)
+    print("=" * 50, flush=True)
     while time.time() - start < timeout_minutes * 60:
-        if os.path.exists(SIGNAL_FILE):
-            with open(SIGNAL_FILE, "rb") as f:
-                raw = f.read()
-            content = raw.decode("utf-8", errors="replace")
-            content = "".join(c for c in content if c.isalnum()).lower()
-            os.remove(SIGNAL_FILE)
+        content = await asyncio.to_thread(_read_signal)
+        if content:
             return content == "yes"
         await asyncio.sleep(2)
     print("  Timeout alcanzado, cancelando.", flush=True)

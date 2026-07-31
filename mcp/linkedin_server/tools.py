@@ -2,17 +2,16 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+import playwright.async_api as pw
 
 
 @dataclass
 class BrowserSession:
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    playwright: Optional[object] = None
-    browser: Optional[object] = None
-    page: Optional[object] = None
+    playwright: object | None = None
+    browser: object | None = None
+    page: object | None = None
     is_authenticated: bool = False
     created_at: float = field(default_factory=time.time)
     _post_content: str = ""
@@ -27,7 +26,7 @@ class SessionManager:
         self._sessions[session.session_id] = session
         return session
 
-    def get_session(self, session_id: str) -> Optional[BrowserSession]:
+    def get_session(self, session_id: str) -> BrowserSession | None:
         return self._sessions.get(session_id)
 
     def remove_session(self, session_id: str) -> None:
@@ -44,7 +43,7 @@ async def open_browser(session_id: str | None = None) -> dict:
         session = sessions.create_session()
 
     try:
-        p = await async_playwright().start()
+        p = await pw.async_playwright().start()
         browser = await p.chromium.launch(headless=False)
         page = await browser.new_page()
         await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
@@ -113,7 +112,6 @@ async def verify_active_session(session_id: str) -> dict:
         return {"status": "ok", "session_id": session_id, "message": "Session exists but not authenticated", "active": False}
 
     try:
-        current_url = session.page.url
         await session.page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=15000)
         final_url = session.page.url
         if "/login" in final_url or "login" in final_url.split("/"):
@@ -126,7 +124,7 @@ async def verify_active_session(session_id: str) -> dict:
             "message": "Session is active",
             "active": True,
         }
-    except PlaywrightTimeout:
+    except pw.TimeoutError:
         session.is_authenticated = False
         return {"status": "error", "session_id": session_id, "message": "Page load timeout. Session may be expired.", "active": False}
     except Exception as e:
@@ -180,7 +178,7 @@ async def create_post(session_id: str, content: str) -> dict:
             "message": "Editor opened and content written. User must review and click Publish manually.",
             "content": content,
         }
-    except PlaywrightTimeout:
+    except pw.TimeoutError:
         return {"status": "error", "session_id": session_id, "message": "Timeout waiting for editor elements. LinkedIn page structure may have changed."}
     except Exception as e:
         return {"status": "error", "session_id": session_id, "message": f"Error creating post: {e}"}

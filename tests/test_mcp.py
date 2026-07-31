@@ -1,15 +1,15 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from mcp.linkedin_server.tools import (
-    sessions,
     SessionManager,
-    BrowserSession,
-    open_browser,
-    wait_for_human_auth,
-    verify_active_session,
-    create_post,
     close_browser,
+    create_post,
+    open_browser,
+    sessions,
+    verify_active_session,
+    wait_for_human_auth,
 )
 
 
@@ -57,8 +57,8 @@ def mock_playwright():
 
 @pytest.fixture
 def patched_playwright(mock_playwright):
-    mock_page, mock_browser, mock_chromium, mock_playwright_class = mock_playwright
-    with patch("mcp.linkedin_server.tools.async_playwright", return_value=mock_playwright_class):
+    mock_page, mock_browser, _, mock_playwright_class = mock_playwright
+    with patch("playwright.async_api.async_playwright", return_value=mock_playwright_class):
         yield mock_page, mock_browser
 
 
@@ -90,7 +90,6 @@ class TestSessionManager:
 class TestOpenBrowser:
     @pytest.mark.asyncio
     async def test_open_browser_new_session(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
         result = await open_browser()
 
         assert result["status"] == "ok"
@@ -99,7 +98,6 @@ class TestOpenBrowser:
 
     @pytest.mark.asyncio
     async def test_open_browser_with_session_id(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
         pre = sessions.create_session()
 
         result = await open_browser(session_id=pre.session_id)
@@ -109,9 +107,8 @@ class TestOpenBrowser:
 
     @pytest.mark.asyncio
     async def test_open_browser_failure(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
         with patch(
-            "mcp.linkedin_server.tools.async_playwright",
+            "playwright.async_api.async_playwright",
             side_effect=RuntimeError("No browser"),
         ):
             result = await open_browser()
@@ -135,9 +132,8 @@ class TestWaitForHumanAuth:
 
     @pytest.mark.asyncio
     async def test_already_authenticated(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
         result = await wait_for_human_auth(session.session_id)
@@ -146,9 +142,9 @@ class TestWaitForHumanAuth:
 
     @pytest.mark.asyncio
     async def test_authentication_success(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
+        mock_page, _ = patched_playwright
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         mock_page.url = "https://www.linkedin.com/feed/"
 
         result = await wait_for_human_auth(session.session_id, timeout_minutes=1, poll_seconds=1)
@@ -157,10 +153,10 @@ class TestWaitForHumanAuth:
 
     @pytest.mark.asyncio
     async def test_authentication_timeout(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
+        mock_page, _ = patched_playwright
         mock_page.url = "https://www.linkedin.com/login"
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
 
         result = await wait_for_human_auth(session.session_id, timeout_minutes=0, poll_seconds=1)
         assert result["status"] == "error"
@@ -183,7 +179,7 @@ class TestVerifyActiveSession:
     @pytest.mark.asyncio
     async def test_not_authenticated(self, patched_playwright):
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         session.is_authenticated = False
 
         result = await verify_active_session(session.session_id)
@@ -191,9 +187,9 @@ class TestVerifyActiveSession:
 
     @pytest.mark.asyncio
     async def test_session_active(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
+        mock_page, _ = patched_playwright
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
         mock_page.url = "https://www.linkedin.com/feed/"
 
@@ -202,10 +198,10 @@ class TestVerifyActiveSession:
 
     @pytest.mark.asyncio
     async def test_session_expired(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
+        mock_page, _ = patched_playwright
         mock_page.url = "https://www.linkedin.com/login"
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
         result = await verify_active_session(session.session_id)
@@ -229,16 +225,15 @@ class TestCreatePost:
     @pytest.mark.asyncio
     async def test_not_authenticated(self, patched_playwright):
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         result = await create_post(session.session_id, "Hello")
         assert result["status"] == "error"
         assert "Not authenticated" in result["message"]
 
     @pytest.mark.asyncio
     async def test_create_post_success(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
         result = await create_post(session.session_id, "Test post content")
@@ -255,7 +250,7 @@ class TestCloseBrowser:
     @pytest.mark.asyncio
     async def test_close_browser_ok(self, patched_playwright):
         await open_browser()
-        session = list(sessions._sessions.values())[0]
+        session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
         result = await close_browser(session.session_id)
@@ -266,7 +261,7 @@ class TestCloseBrowser:
 class TestFullFlow:
     @pytest.mark.asyncio
     async def test_full_happy_path(self, patched_playwright):
-        mock_page, mock_browser = patched_playwright
+        mock_page, _ = patched_playwright
 
         # 1. Open browser
         open_result = await open_browser()
