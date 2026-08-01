@@ -174,7 +174,8 @@ linkedin-ai-agent/
 ├── conftest.py                     # Setup de paths de pytest (imports de raíz)
 ├── run_test_flow.py                # Prueba del flujo end-to-end (llamadas directas a tools)
 ├── .github/workflows/ci.yml        # Pipeline CI (ruff + pytest + docker build)
-└── .env.example                    # Plantilla de variables de entorno
+├── .env.example                    # Plantilla de variables de entorno
+└── LICENSE                         # MIT
 ```
 
 ---
@@ -455,7 +456,7 @@ Todas las tools MCP están testeadas con `async_playwright` mockeado, cubriendo 
 | Limitación | Descripción | Mejora potencial |
 |---|---|---|
 | **Sin persistencia de sesión** | Las sesiones son solo en memoria. Si la conexión MCP se cae, el navegador se cierra. | Implementar serialización del contexto del navegador o un servidor de larga duración con keepalive. |
-| **Selectores dependientes del locale** | El selector del botón "Start a post" apunta al texto en español (`name="Crear"`). Falla en inglés u otros idiomas. | Usar selectores por rol ARIA o detectar el locale desde los metadatos de la página. |
+| **Selectores dependientes del locale** | Los selectores de los botones usan texto (`name="Crear"`, fallbacks "Start a post", "Post", "Publish"). Cubren español e inglés, pero otros idiomas podrían romper un selector. | Usar selectores por rol ARIA o detectar el locale desde los metadatos de la página. |
 | **Sin test e2e en CI** | El workflow de CI solo ejecuta unit tests con mocks. Los tests reales de Playwright requieren un servidor de display. | Añadir un job de CI con `xvfb` para Playwright headful en CI. |
 | **Popup y modales de LinkedIn** | Se rastrean popups y se descartan modales in-page, pero una ventana emergente desconocida podría interceptar el flujo. | Ampliar el mapeo de URLs de popup y selectores de cierre según cambios de UI de LinkedIn. |
 | **Sin soporte de imágenes/video** | Actualmente solo posts de texto plano. | Extender `create_post_tool` para manejar subidas de medios en el editor de LinkedIn. |
