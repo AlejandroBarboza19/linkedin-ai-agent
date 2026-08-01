@@ -82,30 +82,34 @@ def _is_auth_popup(url: str) -> bool:
     return any(keyword in url for keyword in _AUTH_POPUP_KEYWORDS)
 
 
-# Viewport de respaldo para el layout de escritorio de LinkedIn. El layout
+# Viewport preferido para el layout de escritorio de LinkedIn. El layout
 # responsivo de LinkedIn usa el viewport de la página (CSS), NO el tamaño
 # físico de la ventana del sistema. Se prefiere un viewport ajustado a la
 # pantalla real (ver _fit_viewport) para que la ventana nunca quede recortada.
 _MIN_VIEWPORT_SIZE = {"width": 1280, "height": 800}
 
+# Viewport seguro por defecto si no se puede leer el tamaño de la pantalla:
+# pequeño para que quepa en cualquier pantalla (el login siempre es accesible).
+_SAFE_VIEWPORT_SIZE = {"width": 1100, "height": 700}
+
 
 async def _fit_viewport(page) -> dict:
-    """Calcula un viewport grande pero que quepa en la pantalla del usuario.
+    """Calcula un viewport que quepa en la pantalla del usuario.
 
     Si la ventana del navegador es más grande que la pantalla, queda recortada
-    y los botones (login, publicar) se vuelven inaccesibles. LinkedIn decide
-    sus controles según el viewport de la página, así que basta con un ancho
-    razonable sin pasarse de la pantalla real.
+    y los botones (login, publicar) se vuelven inaccesibles. Se deja un margen
+    para el marco de la ventana y la barra de tareas. Si no se puede leer la
+    pantalla, se usa un tamaño seguro pequeño.
     """
     try:
         dims = await page.evaluate("() => ({w: screen.availWidth, h: screen.availHeight})")
-        avail_w = int(dims.get("w") or _MIN_VIEWPORT_SIZE["width"])
-        avail_h = int(dims.get("h") or _MIN_VIEWPORT_SIZE["height"])
+        avail_w = int(dims.get("w") or _SAFE_VIEWPORT_SIZE["width"])
+        avail_h = int(dims.get("h") or _SAFE_VIEWPORT_SIZE["height"])
     except Exception as e:
         logger.debug("Screen size unavailable: %s", e)
-        return dict(_MIN_VIEWPORT_SIZE)
-    width = min(1440, max(avail_w, 640))
-    height = min(900, max(avail_h, 600))
+        return dict(_SAFE_VIEWPORT_SIZE)
+    width = min(1440, max(avail_w - 20, 640))
+    height = min(900, max(avail_h - 60, 480))
     return {"width": width, "height": height}
 
 
@@ -193,21 +197,10 @@ async def _get_editor(page) -> object:
 async def _click_trigger(page) -> bool:
     """Abre el composer desde /feed/ haciendo clic en el disparador del post.
 
-    Prueba selectores por clase (estables), luego etiquetas multi-locale.
-    Verifica que el editor quede visible antes de devolver éxito.
-    Devuelve True si logró abrir el editor.
+    Prueba etiquetas multi-locale primero (flujo que funcionó en ejecución
+    real), luego selectores por clase (estables). Verifica que el editor
+    quede visible antes de devolver éxito.
     """
-    for selector in _TRIGGER_SELECTORS:
-        try:
-            loc = page.locator(selector).first
-            await loc.wait_for(state="visible", timeout=2000)
-            await loc.click()
-            await asyncio.sleep(1)
-            if await _wait_for_editor(page):
-                return True
-        except Exception as e:
-            logger.debug("Trigger selector %s failed: %s", selector, e)
-            continue
     for label in _TRIGGER_LABELS:
         try:
             loc = page.get_by_role("button", name=label)
@@ -219,14 +212,25 @@ async def _click_trigger(page) -> bool:
         except Exception as e:
             logger.debug("Trigger label %s failed: %s", label, e)
             continue
+    for selector in _TRIGGER_SELECTORS:
+        try:
+            loc = page.locator(selector).first
+            await loc.wait_for(state="visible", timeout=2000)
+            await loc.click()
+            await asyncio.sleep(1)
+            if await _wait_for_editor(page):
+                return True
+        except Exception as e:
+            logger.debug("Trigger selector %s failed: %s", selector, e)
+            continue
     return False
 
 
 async def _open_composer(session: BrowserSession) -> bool:
     """Abre el editor de posts con estrategias en cascada.
 
-    1. URL directa del composer (independiente del DOM/botones).
-    2. /feed/ + clic en el disparador (selectores de clase + etiquetas).
+    1. /feed/ + clic en el disparador (flujo probado en ejecución real).
+    2. URL directa del composer (independiente del DOM/botones).
 
     Devuelve True si el editor quedó visible.
     """
@@ -235,23 +239,22 @@ async def _open_composer(session: BrowserSession) -> bool:
         return False
 
     try:
-        await page.goto(_COMPOSER_URL, wait_until="domcontentloaded", timeout=30000)
-    except Exception as e:
-        logger.debug("Direct composer URL failed: %s", e)
-    else:
-        await asyncio.sleep(2)
-        if await _wait_for_editor(page):
-            return True
-        logger.debug("Composer not present on direct URL, falling back to feed trigger")
-
-    try:
         await page.goto(_FEED_URL, wait_until="load", timeout=30000)
         await asyncio.sleep(2)
     except Exception as e:
         logger.debug("Feed navigation failed: %s", e)
 
     await _dismiss_inpage_modals(session)
-    return await _click_trigger(page)
+    if await _click_trigger(page):
+        return True
+
+    try:
+        await page.goto(_COMPOSER_URL, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(2)
+    except Exception as e:
+        logger.debug("Direct composer URL failed: %s", e)
+        return False
+    return await _wait_for_editor(page)
 
 
 async def _publish_succeeded(page, editor) -> bool:
@@ -274,21 +277,11 @@ async def _publish_succeeded(page, editor) -> bool:
 async def _publish_post(page, editor) -> bool:
     """Publica con estrategias en cascada hasta que una confirme éxito.
 
-    1. Botón primario (clase estable, independiente del idioma), probado tanto
-       dentro del modal como a página completa.
-    2. Etiquetas de botón multi-locale (coincidencia exacta y parcial).
+    1. Etiquetas de botón multi-locale (flujo probado en ejecución real),
+       con coincidencia exacta y parcial.
+    2. Botón primario (clase estable), en modal o a página completa.
     3. Atajo de teclado Ctrl/Cmd+Enter (funciona con cualquier UI).
     """
-    for selector in _PUBLISH_PRIMARY_SELECTORS:
-        loc = page.locator(selector).last
-        try:
-            await loc.wait_for(state="visible", timeout=2500)
-            await loc.click()
-            if await _publish_succeeded(page, editor):
-                return True
-        except Exception as e:
-            logger.debug("Publish selector %s failed: %s", selector, e)
-
     for label in _PUBLISH_LABELS:
         for exact in (True, False):
             candidate = page.get_by_role("button", name=label, exact=exact).last
@@ -299,6 +292,16 @@ async def _publish_post(page, editor) -> bool:
             await candidate.click()
             if await _publish_succeeded(page, editor):
                 return True
+
+    for selector in _PUBLISH_PRIMARY_SELECTORS:
+        loc = page.locator(selector).last
+        try:
+            await loc.wait_for(state="visible", timeout=2500)
+            await loc.click()
+            if await _publish_succeeded(page, editor):
+                return True
+        except Exception as e:
+            logger.debug("Publish selector %s failed: %s", selector, e)
 
     key = "Meta+Enter" if sys.platform == "darwin" else "Control+Enter"
     try:
@@ -424,11 +427,13 @@ async def create_post(session_id: str, content: str) -> dict:
 
     Usa estrategias en cascada para publicar sin importar el locale ni el
     estado del DOM de LinkedIn:
-      1. Abre el editor directamente por URL (linkedin.com/post/new/).
-      2. Si no abre, va a /feed/ y hace clic en el disparador del post
-         (selectores por clase estables + etiquetas multi-locale).
-      3. Publica con el botón primario del modal (independiente del idioma),
-         o por etiqueta, o con el atajo Ctrl/Cmd+Enter (último recurso).
+      1. Va a /feed/ y hace clic en el disparador del post (etiquetas
+         multi-locale + selectores por clase estables), descartando modales
+         in-page. Este flujo es el que funcionó en ejecución real.
+      2. Si no abre, recurre a la URL directa del editor (post/new/).
+      3. Publica por etiqueta ("Publicar"/"Post"/"Publish"/"Publier"),
+         o con el botón primario (clase estable), o con el atajo
+         Ctrl/Cmd+Enter (último recurso).
 
     El clic en "Publicar" se ejecuta automáticamente. El HITL queda reservado
     para el login y 2FA, que el usuario completa manualmente en el navegador.
@@ -451,8 +456,8 @@ async def create_post(session_id: str, content: str) -> dict:
                 "status": "error",
                 "session_id": session_id,
                 "message": (
-                    "Could not open the post composer (tried the direct composer "
-                    "URL and the feed trigger). Check the browser window and retry."
+                    "Could not open the post composer (tried the feed trigger "
+                    "and the direct composer URL). Check the browser window and retry."
                 ),
             }
 

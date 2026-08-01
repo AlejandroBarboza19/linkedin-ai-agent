@@ -283,39 +283,36 @@ class TestCreatePost:
         assert session._post_content == "Test post content"
         assert session._published is True
 
-        # Abre el composer por URL directa (sin depender de botones de locale)
-        composer_calls = [c.args[0] for c in mock_page.goto.await_args_list]
-        assert any("post/new" in url for url in composer_calls)
-        # Rellena el editor
-        editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
-        editor.fill.assert_awaited_once_with("Test post content")
-        # Publica con el botón primario (clase estable, independiente del idioma)
-        primary = mock_page.locator('div[role="dialog"] button.artdeco-button--primary').last
-        assert primary.click.await_count == 1
-        # No recurre al atajo de teclado
-        mock_page.keyboard.press.assert_not_awaited()
+        # Flujo principal: /feed/ + disparador + etiqueta de publicar
+        feed_calls = [c.args[0] for c in mock_page.goto.await_args_list]
+        assert any("/feed/" in url for url in feed_calls)
+        trigger = mock_page.get_by_role("button", name="Crear")
+        assert trigger.click.await_count == 1
+        publish = mock_page.get_by_role("button", name="Publicar", exact=True).last
+        assert publish.click.await_count == 1
+        # Solo se presiona Escape para cerrar modales; nunca el atajo de publicar
+        keys = [c.args[0] for c in mock_page.keyboard.press.await_args_list]
+        assert keys == ["Escape"]
 
     @pytest.mark.asyncio
-    async def test_create_post_falls_back_to_feed_trigger(self, patched_playwright):
+    async def test_create_post_falls_back_to_direct_url(self, patched_playwright):
         mock_page, _ = patched_playwright
         await open_browser()
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
-        # La URL directa del composer no abre (falla la navegación)
-        async def goto(url, **kwargs):
-            if "post/new" in url:
-                raise pw.TimeoutError("composer url failed")
-
-        mock_page.goto = AsyncMock(side_effect=goto)
+        # El disparador de /feed/ no responde (ni etiquetas ni clases)
+        for label in ("Crear", "Start a post", "Poster", "Publier", "Commencer"):
+            mock_page.get_by_role("button", name=label).wait_for.side_effect = pw.TimeoutError("no trigger")
+        for selector in ("button.share-box-feed-entry__trigger", "div.share-box-feed-entry__trigger"):
+            mock_page.locator(selector).first.wait_for.side_effect = pw.TimeoutError("no trigger")
 
         result = await create_post(session.session_id, "Test post content")
         assert result["status"] == "ok"
 
-        # Camino de fallback: /feed/ + Escape para modales + clic en el trigger
-        mock_page.keyboard.press.assert_awaited_once_with("Escape")
-        trigger = mock_page.locator("button.share-box-feed-entry__trigger").first
-        assert trigger.click.await_count == 1
+        # Camino de respaldo: URL directa del composer
+        composer_calls = [c.args[0] for c in mock_page.goto.await_args_list]
+        assert any("post/new" in url for url in composer_calls)
 
     @pytest.mark.asyncio
     async def test_create_post_all_publish_strategies_fail(self, patched_playwright):
@@ -350,14 +347,14 @@ class TestCreatePost:
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
-        # El viewport se calcula para que quepa en la pantalla (1366x768)
-        assert session.viewport_size == {"width": 1366, "height": 768}
+        # El viewport se calcula restando márgenes a la pantalla (1366x768 -> 1346x708)
+        assert session.viewport_size == {"width": 1346, "height": 708}
 
         result = await create_post(session.session_id, "Test post content")
 
         assert result["status"] == "ok"
         last_call = mock_page.set_viewport_size.await_args_list[-1]
-        assert last_call.args[0] == {"width": 1366, "height": 768}
+        assert last_call.args[0] == {"width": 1346, "height": 708}
 
 
 class TestCloseBrowser:
