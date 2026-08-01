@@ -152,7 +152,7 @@ linkedin-ai-agent/
 │   └── telemetry/
 │       └── logger.py               # Configuración de logging
 ├── tests/
-│   ├── test_mcp.py                 # 25 tests: tools MCP con Playwright mockeado
+│   ├── test_mcp.py                 # 28 tests: tools MCP con Playwright mockeado
 │   ├── test_agent.py               # Definición del agente + frontmatter de la skill
 │   ├── test_config.py              # Settings: defaults + variables de entorno
 │   └── test_harness.py             # Harness HITL por señal de archivo
