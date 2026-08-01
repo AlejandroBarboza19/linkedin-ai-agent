@@ -182,13 +182,84 @@ linkedin-ai-agent/
 ## Prerrequisitos
 
 - **Python** >= 3.11
+- **Git**
 - **Chromium** (instalado vía Playwright)
 - **OpenCode** CLI (para ejecución basada en agente) — opcional, la invocación directa de tools funciona sin él
 - **ZAI API key** (gratis, de https://z.ai) si usas el modelo GLM configurado vía OpenCode
+- **Docker** (opcional) — solo para validar el entorno con `docker compose build`
+
+---
+
+## Primeros pasos en una máquina limpia
+
+Si nunca has probado el proyecto, instala primero las herramientas base (una sola vez por máquina) y luego sigue los pasos del proyecto.
+
+### 1. Herramientas base
+
+| Herramienta | Para qué | Dónde |
+|---|---|---|
+| **Git** | Clonar el repositorio | https://git-scm.com |
+| **Python 3.11+** | Ejecutar el proyecto | https://www.python.org (marca "Add to PATH" en Windows) |
+| **Node.js** | Instalar el CLI de OpenCode | https://nodejs.org |
+| **OpenCode CLI** | Ejecutar el agente | `npm install -g opencode-ai` |
+| **Docker Desktop** *(opcional)* | Validar el entorno empaquetado | https://www.docker.com/products/docker-desktop |
+
+Verifica que todo quedó instalado:
+
+```bash
+git --version
+python --version          # o python3
+node --version
+npm --version
+opencode --version
+```
+
+### 2. Instalar el proyecto
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/AlejandroBarboza19/linkedin-ai-agent
+cd linkedin-ai-agent
+
+# 2. Crear y activar un entorno virtual
+python -m venv .venv
+.venv\Scripts\activate    # Windows
+# source .venv/bin/activate   # macOS/Linux
+
+# 3. Instalar el paquete y las dependencias de desarrollo
+pip install -e ".[dev]"
+
+# 4. Instalar Chromium para Playwright
+playwright install chromium
+```
+
+### 3. Configurar la API key
+
+```bash
+# Windows
+copy .env.example .env
+# macOS / Linux
+cp .env.example .env
+```
+
+Edita `.env` y pon tu `ZAI_API_KEY` (gratis en https://z.ai).
+
+### 4. Probar
+
+```bash
+python -m pytest -q        # esperado: 38 passed
+python -m ruff check .     # esperado: All checks passed!
+scripts\setup.cmd          # Windows: prepara la key
+scripts\run.cmd            # Windows: publica "Hola mundo"
+./scripts/setup.sh         # macOS/Linux: prepara la key
+./scripts/run.sh           # macOS/Linux: publica "Hola mundo"
+```
 
 ---
 
 ## Instalación
+
+Resumen de los pasos del proyecto (tras tener las herramientas base):
 
 ```bash
 # 1. Clonar el repositorio
