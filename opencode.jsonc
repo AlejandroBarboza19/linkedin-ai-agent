@@ -17,7 +17,7 @@
   "provider": {
     "zai": {
       "options": {
-        "apiKey": "{env:ZAI_API_KEY}"
+        "apiKey": "{file:.opencode/zai-key}"
       }
     }
   },

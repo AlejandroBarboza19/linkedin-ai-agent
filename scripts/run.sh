@@ -14,13 +14,16 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Extraer ZAI_API_KEY de .env y exportarla para opencode
+# Extraer ZAI_API_KEY de .env y escribirla en .opencode/zai-key (que opencode
+# lee vía {file:.opencode/zai-key}). El archivo está gitignoreado.
 API_KEY=$(grep -E '^ZAI_API_KEY=' "$ENV_FILE" | head -1 | cut -d '=' -f2- | tr -d '[:space:]')
 if [ -z "$API_KEY" ]; then
   echo "ERROR: ZAI_API_KEY no encontrada en $ENV_FILE" >&2
   exit 1
 fi
-export ZAI_API_KEY="$API_KEY"
+mkdir -p "$PROJECT_DIR/.opencode"
+printf '%s' "$API_KEY" > "$PROJECT_DIR/.opencode/zai-key"
+chmod 600 "$PROJECT_DIR/.opencode/zai-key" 2>/dev/null || true
 
 # Ejecutar opencode desde el directorio del proyecto, o el repo se percibe
 # como "directorio externo" y opencode bloquea el acceso en modo no interactivo.
