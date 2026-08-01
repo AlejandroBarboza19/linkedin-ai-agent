@@ -157,8 +157,10 @@ linkedin-ai-agent/
 │   ├── test_config.py              # Settings: defaults + variables de entorno
 │   └── test_harness.py             # Harness HITL por señal de archivo
 ├── scripts/
-│   ├── run.ps1                     # Lanzador Windows (.env → .opencode/zai-key)
-│   └── run.sh                      # Lanzador Linux/macOS (.env → .opencode/zai-key)
+│   ├── run.ps1                     # Lanzador Windows (setup + publica)
+│   ├── run.sh                      # Lanzador Linux/macOS (setup + publica)
+│   ├── setup.ps1                   # Solo configura la key (.env → .opencode/zai-key)
+│   └── setup.sh                    # Solo configura la key (.env → .opencode/zai-key)
 ├── .opencode/
 │   └── skills/
 │       └── linkedin-poster/
@@ -261,13 +263,23 @@ cp .env.example .env
 .\scripts\run.ps1 "Crea un post en LinkedIn diciendo Hola mundo"  # Windows
 ```
 
-El script lee la key de `.env`, la escribe en `.opencode/zai-key` (que opencode lee vía `{file:.opencode/zai-key}`; el archivo está gitignoreado), cambia al directorio del proyecto y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
+`run.sh`/`run.ps1` preparan la key y publican en un solo comando: leen `ZAI_API_KEY` de `.env`, la escriben en `.opencode/zai-key` (que opencode lee vía `{file:.opencode/zai-key}`; el archivo está gitignoreado), cambian al directorio del proyecto y ejecutan `opencode run --agent linkedin-agent` con tu instrucción.
 
 Sin argumento, el script publica un post **"Hola mundo"** por defecto (demo en un solo comando). Si pasas una instrucción, usa la tuya:
 
 ```bash
 ./scripts/run.sh                                   # publica "Hola mundo"
 ./scripts/run.sh "Escribe un post sobre IA"        # usa tu instrucción
+```
+
+### Solo configurar la key (para usar opencode interactivo)
+
+Si prefieres abrir opencode directamente y conversar, corre el setup **una vez**; luego `opencode` normal ya funciona cuando quieras:
+
+```bash
+./scripts/setup.sh        # Linux / macOS  (solo escribe .opencode/zai-key)
+.\scripts\setup.ps1       # Windows
+opencode                  # ya listo, sin exportar nada
 ```
 
 ### Nota sobre permisos de OpenCode
@@ -292,16 +304,16 @@ Este script llama directamente a las tools MCP (sin agente) y usa un archivo `.h
 
 El flujo de producción usa la interfaz conversacional de OpenCode. La confirmación HITL ocurre por chat, no por señales de archivo.
 
-Usa los scripts de `scripts/` para cargar `.env` automáticamente (ver [Ejecutar el agente](#ejecutar-el-agente)):
+Usa los scripts de `scripts/` para preparar la key automáticamente (ver [Ejecutar el agente](#ejecutar-el-agente) y [Solo configurar la key](#solo-configurar-la-key-para-usar-opencode-interactivo)):
 
 ```bash
 ./scripts/run.sh "Escribe un post sobre tendencias de IA"
 ```
 
-O manualmente (primero crea el archivo de la key desde tu `.env`):
+O manualmente (primero corre el setup una vez):
 
 ```bash
-grep '^ZAI_API_KEY=' .env | cut -d '=' -f2- > .opencode/zai-key   # Linux/macOS
+./scripts/setup.sh   # escribe .opencode/zai-key desde tu .env
 opencode
 # Luego el prompt: @linkedin-agent "Escribe un post sobre tendencias de IA"
 ```
