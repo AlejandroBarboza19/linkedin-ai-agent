@@ -20,6 +20,7 @@ class BrowserSession:
     _post_content: str = ""
     _published: bool = False
     popup_pages: list = field(default_factory=list)
+    viewport_size: dict | None = None
 
 
 class SessionManager:
@@ -81,25 +82,46 @@ def _is_auth_popup(url: str) -> bool:
     return any(keyword in url for keyword in _AUTH_POPUP_KEYWORDS)
 
 
-# Tamaño de viewport en el que LinkedIn muestra todos los controles del
-# editor. El layout responsivo de LinkedIn usa el viewport de la página (CSS),
-# NO el tamaño físico de la ventana del sistema: fijando el viewport aquí,
-# la publicación no depende de si la ventana está maximizada o no.
+# Viewport de respaldo para el layout de escritorio de LinkedIn. El layout
+# responsivo de LinkedIn usa el viewport de la página (CSS), NO el tamaño
+# físico de la ventana del sistema. Se prefiere un viewport ajustado a la
+# pantalla real (ver _fit_viewport) para que la ventana nunca quede recortada.
 _MIN_VIEWPORT_SIZE = {"width": 1280, "height": 800}
 
 
+async def _fit_viewport(page) -> dict:
+    """Calcula un viewport grande pero que quepa en la pantalla del usuario.
+
+    Si la ventana del navegador es más grande que la pantalla, queda recortada
+    y los botones (login, publicar) se vuelven inaccesibles. LinkedIn decide
+    sus controles según el viewport de la página, así que basta con un ancho
+    razonable sin pasarse de la pantalla real.
+    """
+    try:
+        dims = await page.evaluate("() => ({w: screen.availWidth, h: screen.availHeight})")
+        avail_w = int(dims.get("w") or _MIN_VIEWPORT_SIZE["width"])
+        avail_h = int(dims.get("h") or _MIN_VIEWPORT_SIZE["height"])
+    except Exception as e:
+        logger.debug("Screen size unavailable: %s", e)
+        return dict(_MIN_VIEWPORT_SIZE)
+    width = min(1440, max(avail_w, 640))
+    height = min(900, max(avail_h, 600))
+    return {"width": width, "height": height}
+
+
 async def _ensure_reasonable_viewport(session: BrowserSession) -> bool:
-    """Fuerza un viewport grande en la página.
+    """Fija el viewport calculado para la pantalla del usuario.
 
     LinkedIn decide qué controles mostrar según el viewport de la página.
-    Fijarlo a 1280x800 garantiza el layout de escritorio con todos los botones
-    aunque la ventana física del sistema sea pequeña.
+    Aplicar el viewport ajustado a la pantalla garantiza que la ventana no
+    quede recortada y que los botones del editor sean accesibles.
     """
     page = session.page
     if page is None:
         return False
+    target = session.viewport_size or _MIN_VIEWPORT_SIZE
     try:
-        await page.set_viewport_size(_MIN_VIEWPORT_SIZE)
+        await page.set_viewport_size(target)
         await asyncio.sleep(0.5)
         return True
     except Exception as e:
@@ -298,13 +320,20 @@ async def open_browser(session_id: str | None = None) -> dict:
     try:
         p = await pw.async_playwright().start()
         browser = await p.chromium.launch(headless=False)
-        page = await browser.new_page(viewport=_MIN_VIEWPORT_SIZE)
+        page = await browser.new_page()
 
         def _track_popup(popup: pw.Page) -> None:
             session.popup_pages.append(popup)
 
         page.on("popup", _track_popup)
         await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
+
+        # Ventana ajustada a la pantalla: nunca recortada, login accesible.
+        session.viewport_size = await _fit_viewport(page)
+        try:
+            await page.set_viewport_size(session.viewport_size)
+        except Exception as e:
+            logger.debug("Viewport fit failed: %s", e)
 
         session.playwright = p
         session.browser = browser

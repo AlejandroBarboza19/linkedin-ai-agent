@@ -32,6 +32,7 @@ def mock_playwright():
     mock_page.on = MagicMock()
     mock_page.viewport_size = AsyncMock(return_value={"width": 1366, "height": 768})
     mock_page.set_viewport_size = AsyncMock()
+    mock_page.evaluate = AsyncMock(return_value={"w": 1366, "h": 768})
 
     def make_locator():
         loc = AsyncMock()
@@ -343,17 +344,20 @@ class TestCreatePost:
         assert session._published is False
 
     @pytest.mark.asyncio
-    async def test_create_post_resizes_small_window(self, patched_playwright):
+    async def test_create_post_uses_fit_viewport(self, patched_playwright):
         mock_page, _ = patched_playwright
-        mock_page.viewport_size = AsyncMock(return_value={"width": 640, "height": 480})
         await open_browser()
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
+        # El viewport se calcula para que quepa en la pantalla (1366x768)
+        assert session.viewport_size == {"width": 1366, "height": 768}
+
         result = await create_post(session.session_id, "Test post content")
 
         assert result["status"] == "ok"
-        mock_page.set_viewport_size.assert_awaited_once_with({"width": 1280, "height": 800})
+        last_call = mock_page.set_viewport_size.await_args_list[-1]
+        assert last_call.args[0] == {"width": 1366, "height": 768}
 
 
 class TestCloseBrowser:
