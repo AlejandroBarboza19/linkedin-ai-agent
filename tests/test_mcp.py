@@ -289,7 +289,7 @@ class TestCreatePost:
         editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
         editor.fill.assert_awaited_once_with("Test post content")
         # Publica con el botón primario (clase estable, independiente del idioma)
-        primary = mock_page.locator('div[role="dialog"] button.artdeco-button--primary').first
+        primary = mock_page.locator('div[role="dialog"] button.artdeco-button--primary').last
         assert primary.click.await_count == 1
         # No recurre al atajo de teclado
         mock_page.keyboard.press.assert_not_awaited()
@@ -301,14 +301,12 @@ class TestCreatePost:
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
-        # El composer directo no abre: el editor no se muestra tras /post/new/
-        editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
+        # La URL directa del composer no abre (falla la navegación)
+        async def goto(url, **kwargs):
+            if "post/new" in url:
+                raise pw.TimeoutError("composer url failed")
 
-        async def wait_for(**kwargs):
-            if kwargs.get("state") == "visible":
-                raise pw.TimeoutError("composer not visible")
-
-        editor.wait_for = AsyncMock(side_effect=wait_for)
+        mock_page.goto = AsyncMock(side_effect=goto)
 
         result = await create_post(session.session_id, "Test post content")
         assert result["status"] == "ok"
@@ -325,14 +323,7 @@ class TestCreatePost:
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
-        # Estrategia 1: botón primario no visible
-        primary = mock_page.locator('div[role="dialog"] button.artdeco-button--primary').first
-        primary.wait_for.side_effect = pw.TimeoutError("no primary")
-        # Estrategia 2: ninguna etiqueta visible
-        for label in ("Publicar", "Post", "Publish", "Publier"):
-            loc = mock_page.get_by_role("button", name=label, exact=True)
-            loc.wait_for.side_effect = pw.TimeoutError("no label")
-        # El composer nunca se cierra
+        # El composer nunca se cierra y no hay toast de éxito
         editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
 
         async def wait_for(**kwargs):
@@ -340,7 +331,9 @@ class TestCreatePost:
                 raise pw.TimeoutError("still open")
 
         editor.wait_for = AsyncMock(side_effect=wait_for)
-        # Estrategia 3: el atajo de teclado falla
+        mock_page.locator(".artdeco-toast-message").first.wait_for.side_effect = pw.TimeoutError("no toast")
+        mock_page.locator('div[role="alert"]').first.wait_for.side_effect = pw.TimeoutError("no toast")
+        # El atajo de teclado (último recurso) también falla
         mock_page.keyboard.press = AsyncMock(side_effect=RuntimeError("keyboard blocked"))
 
         result = await create_post(session.session_id, "Test post content")

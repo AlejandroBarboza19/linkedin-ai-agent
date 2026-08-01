@@ -81,34 +81,30 @@ def _is_auth_popup(url: str) -> bool:
     return any(keyword in url for keyword in _AUTH_POPUP_KEYWORDS)
 
 
-# Tamaño mínimo de ventana en el que LinkedIn muestra todos los controles del
-# editor. Con una ventana más pequeña el layout responsivo oculta botones.
+# Tamaño de viewport en el que LinkedIn muestra todos los controles del
+# editor. El layout responsivo de LinkedIn usa el viewport de la página (CSS),
+# NO el tamaño físico de la ventana del sistema: fijando el viewport aquí,
+# la publicación no depende de si la ventana está maximizada o no.
 _MIN_VIEWPORT_SIZE = {"width": 1280, "height": 800}
 
 
 async def _ensure_reasonable_viewport(session: BrowserSession) -> bool:
-    """Si la ventana del navegador es demasiado pequeña, la agranda.
+    """Fuerza un viewport grande en la página.
 
-    LinkedIn usa layouts responsivos: con una ventana muy pequeña el botón
-    para crear el post puede ocultarse y los selectores fallan. Es best-effort:
-    si el ajuste no se puede aplicar, devuelve False y el flujo continúa.
-    Devuelve True si se agrandó la ventana.
+    LinkedIn decide qué controles mostrar según el viewport de la página.
+    Fijarlo a 1280x800 garantiza el layout de escritorio con todos los botones
+    aunque la ventana física del sistema sea pequeña.
     """
     page = session.page
     if page is None:
         return False
     try:
-        vp = await page.viewport_size()
-        if vp and (
-            vp["width"] < _MIN_VIEWPORT_SIZE["width"]
-            or vp["height"] < _MIN_VIEWPORT_SIZE["height"]
-        ):
-            await page.set_viewport_size(_MIN_VIEWPORT_SIZE)
-            await asyncio.sleep(1)
-            return True
+        await page.set_viewport_size(_MIN_VIEWPORT_SIZE)
+        await asyncio.sleep(0.5)
+        return True
     except Exception as e:
         logger.debug("Viewport resize failed: %s", e)
-    return False
+        return False
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -134,7 +130,12 @@ _TRIGGER_SELECTORS = (
 _TRIGGER_LABELS = ("Crear", "Start a post", "Poster", "Publier", "Commencer")
 
 # Botón de publicar: clase estable (independiente del idioma) + etiquetas.
-_PUBLISH_PRIMARY_SELECTOR = 'div[role="dialog"] button.artdeco-button--primary'
+# Se prueban también sin el alcance de diálogo, porque el composer a página
+# completa de /post/new/ no usa div[role="dialog"].
+_PUBLISH_PRIMARY_SELECTORS = (
+    'div[role="dialog"] button.artdeco-button--primary',
+    "button.artdeco-button--primary",
+)
 _PUBLISH_LABELS = ("Publicar", "Post", "Publish", "Publier")
 
 # Indicadores de publicación exitosa (toast de confirmación).
@@ -142,6 +143,17 @@ _SUCCESS_TOAST_SELECTORS = (
     ".artdeco-toast-message",
     'div[role="alert"]',
 )
+
+
+async def _wait_for_editor(page, timeout: int = 4000) -> bool:
+    """Espera a que el editor del post esté visible (con fallback por rol)."""
+    for selector in (_EDITOR_SELECTOR, _EDITOR_FALLBACK):
+        try:
+            await page.locator(selector).wait_for(state="visible", timeout=timeout)
+            return True
+        except pw.TimeoutError:
+            continue
+    return False
 
 
 async def _get_editor(page) -> object:
@@ -160,6 +172,7 @@ async def _click_trigger(page) -> bool:
     """Abre el composer desde /feed/ haciendo clic en el disparador del post.
 
     Prueba selectores por clase (estables), luego etiquetas multi-locale.
+    Verifica que el editor quede visible antes de devolver éxito.
     Devuelve True si logró abrir el editor.
     """
     for selector in _TRIGGER_SELECTORS:
@@ -168,7 +181,8 @@ async def _click_trigger(page) -> bool:
             await loc.wait_for(state="visible", timeout=2000)
             await loc.click()
             await asyncio.sleep(1)
-            return True
+            if await _wait_for_editor(page):
+                return True
         except Exception as e:
             logger.debug("Trigger selector %s failed: %s", selector, e)
             continue
@@ -178,7 +192,8 @@ async def _click_trigger(page) -> bool:
             await loc.wait_for(state="visible", timeout=2000)
             await loc.click()
             await asyncio.sleep(1)
-            return True
+            if await _wait_for_editor(page):
+                return True
         except Exception as e:
             logger.debug("Trigger label %s failed: %s", label, e)
             continue
@@ -203,11 +218,9 @@ async def _open_composer(session: BrowserSession) -> bool:
         logger.debug("Direct composer URL failed: %s", e)
     else:
         await asyncio.sleep(2)
-        try:
-            await page.locator(_EDITOR_SELECTOR).wait_for(state="visible", timeout=3000)
+        if await _wait_for_editor(page):
             return True
-        except pw.TimeoutError:
-            logger.debug("Composer not present on direct URL, falling back to feed trigger")
+        logger.debug("Composer not present on direct URL, falling back to feed trigger")
 
     try:
         await page.goto(_FEED_URL, wait_until="load", timeout=30000)
@@ -239,32 +252,35 @@ async def _publish_succeeded(page, editor) -> bool:
 async def _publish_post(page, editor) -> bool:
     """Publica con estrategias en cascada hasta que una confirme éxito.
 
-    1. Botón primario del modal (clase estable, independiente del idioma).
-    2. Etiquetas de botón multi-locale.
+    1. Botón primario (clase estable, independiente del idioma), probado tanto
+       dentro del modal como a página completa.
+    2. Etiquetas de botón multi-locale (coincidencia exacta y parcial).
     3. Atajo de teclado Ctrl/Cmd+Enter (funciona con cualquier UI).
     """
-    primary = page.locator(_PUBLISH_PRIMARY_SELECTOR).first
-    try:
-        await primary.wait_for(state="visible", timeout=3000)
-        await primary.click()
-        if await _publish_succeeded(page, editor):
-            return True
-    except Exception as e:
-        logger.debug("Primary publish button failed: %s", e)
+    for selector in _PUBLISH_PRIMARY_SELECTORS:
+        loc = page.locator(selector).last
+        try:
+            await loc.wait_for(state="visible", timeout=2500)
+            await loc.click()
+            if await _publish_succeeded(page, editor):
+                return True
+        except Exception as e:
+            logger.debug("Publish selector %s failed: %s", selector, e)
 
     for label in _PUBLISH_LABELS:
-        candidate = page.get_by_role("button", name=label, exact=True)
-        try:
-            await candidate.wait_for(state="visible", timeout=2000)
-        except pw.TimeoutError:
-            continue
-        await candidate.click()
-        if await _publish_succeeded(page, editor):
-            return True
+        for exact in (True, False):
+            candidate = page.get_by_role("button", name=label, exact=exact).last
+            try:
+                await candidate.wait_for(state="visible", timeout=1500)
+            except pw.TimeoutError:
+                continue
+            await candidate.click()
+            if await _publish_succeeded(page, editor):
+                return True
 
     key = "Meta+Enter" if sys.platform == "darwin" else "Control+Enter"
     try:
-        await editor.click()
+        await editor.focus()
         await page.keyboard.press(key)
         if await _publish_succeeded(page, editor):
             return True
@@ -282,7 +298,7 @@ async def open_browser(session_id: str | None = None) -> dict:
     try:
         p = await pw.async_playwright().start()
         browser = await p.chromium.launch(headless=False)
-        page = await browser.new_page()
+        page = await browser.new_page(viewport=_MIN_VIEWPORT_SIZE)
 
         def _track_popup(popup: pw.Page) -> None:
             session.popup_pages.append(popup)
@@ -406,8 +422,8 @@ async def create_post(session_id: str, content: str) -> dict:
                 "status": "error",
                 "session_id": session_id,
                 "message": (
-                    "Could not open the post composer. Restore the browser to normal "
-                    "size (maximize the window) and try again."
+                    "Could not open the post composer (tried the direct composer "
+                    "URL and the feed trigger). Check the browser window and retry."
                 ),
             }
 
@@ -419,8 +435,8 @@ async def create_post(session_id: str, content: str) -> dict:
                 "status": "error",
                 "session_id": session_id,
                 "message": (
-                    "Could not publish the post. Restore the browser to normal size "
-                    "(maximize the window) and try again."
+                    "Could not publish the post (tried the primary button, text "
+                    "labels and Ctrl/Cmd+Enter). Check the browser window and retry."
                 ),
             }
 
@@ -438,8 +454,7 @@ async def create_post(session_id: str, content: str) -> dict:
             "status": "error",
             "session_id": session_id,
             "message": (
-                "Timeout waiting for editor elements. Restore the browser to normal "
-                "size (maximize the window) or reload the feed and retry."
+                "Timeout waiting for the post editor. Reload the feed and retry."
             ),
         }
     except Exception as e:
