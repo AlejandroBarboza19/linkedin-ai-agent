@@ -376,6 +376,20 @@ python run_test_flow.py
 
 Este script llama directamente a las tools MCP (sin agente) y usa un archivo `.hitl_signal` para la confirmación HITL — apto para pruebas y CI.
 
+Cuando el script pida confirmación, abre **otra terminal en la misma carpeta del proyecto** y escribe la señal:
+
+```powershell
+# PowerShell
+Set-Content -Path .hitl_signal -Value yes
+```
+
+```cmd
+:: CMD
+echo yes > .hitl_signal
+```
+
+`yes` aprueba el post; `no` lo cancela (mismo comando con `no`). El script avisa en pantalla exactamente cuándo hacerlo (antes de abrir el navegador y de nuevo para el login).
+
 ### Flujo con agente (vía conversación en OpenCode — HITL real)
 
 El flujo de producción usa la interfaz conversacional de OpenCode. La confirmación HITL ocurre por chat, no por señales de archivo.
