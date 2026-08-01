@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -110,6 +111,168 @@ async def _ensure_reasonable_viewport(session: BrowserSession) -> bool:
     return False
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Publicación robusta: estrategias en cascada para no depender del locale
+# ni del estado del DOM de LinkedIn.
+# ─────────────────────────────────────────────────────────────────────────
+
+# URL directa del editor de posts: abre el composer sin depender del botón
+# "Start a post" (que cambia de etiqueta según el idioma).
+_COMPOSER_URL = "https://www.linkedin.com/post/new/"
+_FEED_URL = "https://www.linkedin.com/feed/"
+
+# Editor del post: selectores por rol ARIA (independientes del idioma).
+_EDITOR_SELECTOR = 'div[contenteditable="true"][role="textbox"]'
+_EDITOR_FALLBACK = 'div[role="textbox"]'
+
+# Disparador del composer en /feed/ (clases estables de LinkedIn + etiquetas
+# multi-locale como último recurso).
+_TRIGGER_SELECTORS = (
+    "button.share-box-feed-entry__trigger",
+    "div.share-box-feed-entry__trigger",
+)
+_TRIGGER_LABELS = ("Crear", "Start a post", "Poster", "Publier", "Commencer")
+
+# Botón de publicar: clase estable (independiente del idioma) + etiquetas.
+_PUBLISH_PRIMARY_SELECTOR = 'div[role="dialog"] button.artdeco-button--primary'
+_PUBLISH_LABELS = ("Publicar", "Post", "Publish", "Publier")
+
+# Indicadores de publicación exitosa (toast de confirmación).
+_SUCCESS_TOAST_SELECTORS = (
+    ".artdeco-toast-message",
+    'div[role="alert"]',
+)
+
+
+async def _get_editor(page) -> object:
+    """Devuelve el editor contenteditable del composer, con fallback por rol."""
+    editor = page.locator(_EDITOR_SELECTOR)
+    try:
+        await editor.wait_for(timeout=3000)
+        return editor
+    except pw.TimeoutError:
+        fallback = page.locator(_EDITOR_FALLBACK)
+        await fallback.wait_for(timeout=3000)
+        return fallback
+
+
+async def _click_trigger(page) -> bool:
+    """Abre el composer desde /feed/ haciendo clic en el disparador del post.
+
+    Prueba selectores por clase (estables), luego etiquetas multi-locale.
+    Devuelve True si logró abrir el editor.
+    """
+    for selector in _TRIGGER_SELECTORS:
+        try:
+            loc = page.locator(selector).first
+            await loc.wait_for(state="visible", timeout=2000)
+            await loc.click()
+            await asyncio.sleep(1)
+            return True
+        except Exception as e:
+            logger.debug("Trigger selector %s failed: %s", selector, e)
+            continue
+    for label in _TRIGGER_LABELS:
+        try:
+            loc = page.get_by_role("button", name=label)
+            await loc.wait_for(state="visible", timeout=2000)
+            await loc.click()
+            await asyncio.sleep(1)
+            return True
+        except Exception as e:
+            logger.debug("Trigger label %s failed: %s", label, e)
+            continue
+    return False
+
+
+async def _open_composer(session: BrowserSession) -> bool:
+    """Abre el editor de posts con estrategias en cascada.
+
+    1. URL directa del composer (independiente del DOM/botones).
+    2. /feed/ + clic en el disparador (selectores de clase + etiquetas).
+
+    Devuelve True si el editor quedó visible.
+    """
+    page = session.page
+    if page is None:
+        return False
+
+    try:
+        await page.goto(_COMPOSER_URL, wait_until="domcontentloaded", timeout=30000)
+    except Exception as e:
+        logger.debug("Direct composer URL failed: %s", e)
+    else:
+        await asyncio.sleep(2)
+        try:
+            await page.locator(_EDITOR_SELECTOR).wait_for(state="visible", timeout=3000)
+            return True
+        except pw.TimeoutError:
+            logger.debug("Composer not present on direct URL, falling back to feed trigger")
+
+    try:
+        await page.goto(_FEED_URL, wait_until="load", timeout=30000)
+        await asyncio.sleep(2)
+    except Exception as e:
+        logger.debug("Feed navigation failed: %s", e)
+
+    await _dismiss_inpage_modals(session)
+    return await _click_trigger(page)
+
+
+async def _publish_succeeded(page, editor) -> bool:
+    """Confirma si la publicación se completó (composer cerrado o toast)."""
+    try:
+        await editor.wait_for(state="detached", timeout=5000)
+        return True
+    except pw.TimeoutError:
+        pass
+    for selector in _SUCCESS_TOAST_SELECTORS:
+        try:
+            await page.locator(selector).first.wait_for(state="visible", timeout=1500)
+            return True
+        except Exception as e:
+            logger.debug("Toast selector %s not found: %s", selector, e)
+            continue
+    return False
+
+
+async def _publish_post(page, editor) -> bool:
+    """Publica con estrategias en cascada hasta que una confirme éxito.
+
+    1. Botón primario del modal (clase estable, independiente del idioma).
+    2. Etiquetas de botón multi-locale.
+    3. Atajo de teclado Ctrl/Cmd+Enter (funciona con cualquier UI).
+    """
+    primary = page.locator(_PUBLISH_PRIMARY_SELECTOR).first
+    try:
+        await primary.wait_for(state="visible", timeout=3000)
+        await primary.click()
+        if await _publish_succeeded(page, editor):
+            return True
+    except Exception as e:
+        logger.debug("Primary publish button failed: %s", e)
+
+    for label in _PUBLISH_LABELS:
+        candidate = page.get_by_role("button", name=label, exact=True)
+        try:
+            await candidate.wait_for(state="visible", timeout=2000)
+        except pw.TimeoutError:
+            continue
+        await candidate.click()
+        if await _publish_succeeded(page, editor):
+            return True
+
+    key = "Meta+Enter" if sys.platform == "darwin" else "Control+Enter"
+    try:
+        await editor.click()
+        await page.keyboard.press(key)
+        if await _publish_succeeded(page, editor):
+            return True
+    except Exception as e:
+        logger.debug("Keyboard publish failed: %s", e)
+    return False
+
+
 async def open_browser(session_id: str | None = None) -> dict:
     """Abre un navegador visible (no headless) con Playwright y navega a linkedin.com/login."""
     session = sessions.create_session() if session_id is None else sessions.get_session(session_id)
@@ -212,7 +375,15 @@ async def verify_active_session(session_id: str) -> dict:
 
 
 async def create_post(session_id: str, content: str) -> dict:
-    """Navega al feed de LinkedIn, abre el editor, escribe el contenido y publica.
+    """Abre el editor de LinkedIn, escribe el contenido y publica.
+
+    Usa estrategias en cascada para publicar sin importar el locale ni el
+    estado del DOM de LinkedIn:
+      1. Abre el editor directamente por URL (linkedin.com/post/new/).
+      2. Si no abre, va a /feed/ y hace clic en el disparador del post
+         (selectores por clase estables + etiquetas multi-locale).
+      3. Publica con el botón primario del modal (independiente del idioma),
+         o por etiqueta, o con el atajo Ctrl/Cmd+Enter (último recurso).
 
     El clic en "Publicar" se ejecuta automáticamente. El HITL queda reservado
     para el login y 2FA, que el usuario completa manualmente en el navegador.
@@ -226,68 +397,32 @@ async def create_post(session_id: str, content: str) -> dict:
         return {"status": "error", "message": "Not authenticated. Run wait_for_human_auth first."}
 
     try:
-        await session.page.goto("https://www.linkedin.com/feed/", wait_until="load", timeout=30000)
-        await asyncio.sleep(2)
-
-        # Si la ventana es demasiado pequeña, LinkedIn oculta controles del
-        # editor; la agrandamos para que los selectores encuentren los botones.
+        # Ventana suficientemente grande para que LinkedIn muestre los controles
+        # del editor (los layouts responsivos ocultan botones en ventanas pequeñas).
         await _ensure_reasonable_viewport(session)
 
-        # Cerrar modales/upsells in-page (Premium/Plus, cookies) que puedan
-        # interceptar los clics sobre el editor de posts.
-        await _dismiss_inpage_modals(session)
-
-        # Click en el botón "Start a post" (varía según el locale)
-        create_btn = session.page.get_by_role("button", name="Crear")
-        try:
-            await create_btn.wait_for(timeout=5000)
-        except Exception:
-            try:
-                create_btn = session.page.get_by_role("button", name="Start a post")
-                await create_btn.wait_for(timeout=5000)
-            except Exception:
-                create_btn = session.page.locator('div[role="button"]').filter(has_text="Crear")
-                await create_btn.wait_for(timeout=5000)
-        await create_btn.click()
-
-        await asyncio.sleep(1)
-
-        # Buscar el editor (div contenteditable dentro del modal de post)
-        editor = session.page.locator('div[contenteditable="true"][role="textbox"]')
-        try:
-            await editor.wait_for(timeout=5000)
-        except Exception:
-            editor = session.page.locator('div[role="textbox"]')
-            await editor.wait_for(timeout=5000)
-        await editor.fill(content)
-
-        # Click en el botón de publicar automáticamente (la etiqueta varía según el locale)
-        publish_btn = None
-        for label in ("Publicar", "Post", "Publish"):
-            candidate = session.page.get_by_role("button", name=label, exact=True)
-            try:
-                await candidate.wait_for(timeout=3000)
-            except pw.TimeoutError:
-                continue
-            publish_btn = candidate
-            break
-        if publish_btn is None:
+        if not await _open_composer(session):
             return {
                 "status": "error",
                 "session_id": session_id,
                 "message": (
-                    "Editor filled but publish button not found. Restore the browser "
-                    "to normal size (maximize the window) and try again."
+                    "Could not open the post composer. Restore the browser to normal "
+                    "size (maximize the window) and try again."
                 ),
             }
 
-        await publish_btn.click()
+        editor = await _get_editor(session.page)
+        await editor.fill(content)
 
-        # Esperar a que el modal del editor se cierre, confirmando la publicación
-        try:
-            await editor.wait_for(state="detached", timeout=10000)
-        except pw.TimeoutError:
-            logger.warning("Composer modal did not close in time after publishing")
+        if not await _publish_post(session.page, editor):
+            return {
+                "status": "error",
+                "session_id": session_id,
+                "message": (
+                    "Could not publish the post. Restore the browser to normal size "
+                    "(maximize the window) and try again."
+                ),
+            }
 
         session._post_content = content
         session._published = True

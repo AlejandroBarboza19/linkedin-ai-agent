@@ -126,7 +126,7 @@ Cinco herramientas registradas vía el SDK de MCP v2 (decorador `@server.tool()`
 ### `create_post_tool`
 - **Entrada:** `session_id` (string), `content` (string)
 - **Salida:** `{"status": "ok|error", "session_id": "...", "message": "...", "content": "..."}`
-- **Acción:** Navega a /feed/, si la ventana es demasiado pequeña la agranda automáticamente (los layouts responsivos de LinkedIn ocultan botones), descarta modales/upsells in-page (Premium/Plus, cookies) con Escape o botones de cierre, hace clic en "Start a post" (`div[role="button"]`), localiza el editor contenteditable (`div[contenteditable="true"][role="textbox"]`), escribe el contenido y hace clic en el botón de publicar ("Publicar"/"Post"/"Publish") automáticamente. Si no encuentra los botones, devuelve un error indicando que se maximice la ventana y se reintente. Luego espera a que se cierre el modal del editor para confirmar que el post fue publicado.
+- **Acción:** Publica con estrategias en cascada para no depender del locale ni del DOM: (1) abre el editor directamente por URL (`/post/new/`, sin depender del botón "Start a post"), (2) si no abre, va a /feed/ y hace clic en el disparador (selectores por clase estables + etiquetas multi-locale), agranda la ventana si es pequeña (los layouts responsivos ocultan botones) y descarta modales/upsells in-page (Premium/Plus, cookies) con Escape o botones de cierre; (3) rellena el editor contenteditable y publica con el botón primario del modal (clase estable), o por etiqueta ("Publicar"/"Post"/"Publish"/"Publier"), o con el atajo de teclado Ctrl/Cmd+Enter como último recurso. Confirma el éxito cuando el composer se cierra o aparece el toast de confirmación. Si todo falla, devuelve un error indicando que se maximice la ventana y se reintente.
 
 ### `close_browser_tool`
 - **Entrada:** `session_id` (string)
@@ -456,7 +456,7 @@ Todas las tools MCP están testeadas con `async_playwright` mockeado, cubriendo 
 | Limitación | Descripción | Mejora potencial |
 |---|---|---|
 | **Sin persistencia de sesión** | Las sesiones son solo en memoria. Si la conexión MCP se cae, el navegador se cierra. | Implementar serialización del contexto del navegador o un servidor de larga duración con keepalive. |
-| **Selectores dependientes del locale** | Los selectores de los botones usan texto (`name="Crear"`, fallbacks "Start a post", "Post", "Publish"). Cubren español e inglés, pero otros idiomas podrían romper un selector. | Usar selectores por rol ARIA o detectar el locale desde los metadatos de la página. |
+| **Selectores dependientes del DOM de LinkedIn** | Se mitiga con estrategias en cascada: URL directa del composer, selectores por clase estables, etiquetas multi-locale y atajo Ctrl/Cmd+Enter. Aun así, un rediseño radical de LinkedIn podría romper un camino concreto. | Añadir una tool de health-check de selectores y más estrategias de fallback. |
 | **Sin test e2e en CI** | El workflow de CI solo ejecuta unit tests con mocks. Los tests reales de Playwright requieren un servidor de display. | Añadir un job de CI con `xvfb` para Playwright headful en CI. |
 | **Popup y modales de LinkedIn** | Se rastrean popups y se descartan modales in-page, pero una ventana emergente desconocida podría interceptar el flujo. | Ampliar el mapeo de URLs de popup y selectores de cierre según cambios de UI de LinkedIn. |
 | **Sin soporte de imágenes/video** | Actualmente solo posts de texto plano. | Extender `create_post_tool` para manejar subidas de medios en el editor de LinkedIn. |

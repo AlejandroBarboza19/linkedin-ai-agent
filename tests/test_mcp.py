@@ -282,38 +282,71 @@ class TestCreatePost:
         assert session._post_content == "Test post content"
         assert session._published is True
 
-        create_loc = mock_page.get_by_role("button", name="Crear")
-        publish_loc = mock_page.get_by_role("button", name="Publicar", exact=True)
-        assert create_loc.click.call_count == 1
-        assert publish_loc.click.call_count == 1
+        # Abre el composer por URL directa (sin depender de botones de locale)
+        composer_calls = [c.args[0] for c in mock_page.goto.await_args_list]
+        assert any("post/new" in url for url in composer_calls)
+        # Rellena el editor
+        editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
+        editor.fill.assert_awaited_once_with("Test post content")
+        # Publica con el botón primario (clase estable, independiente del idioma)
+        primary = mock_page.locator('div[role="dialog"] button.artdeco-button--primary').first
+        assert primary.click.await_count == 1
+        # No recurre al atajo de teclado
+        mock_page.keyboard.press.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_create_post_dismisses_inpage_modals(self, patched_playwright):
+    async def test_create_post_falls_back_to_feed_trigger(self, patched_playwright):
         mock_page, _ = patched_playwright
         await open_browser()
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
+
+        # El composer directo no abre: el editor no se muestra tras /post/new/
+        editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
+
+        async def wait_for(**kwargs):
+            if kwargs.get("state") == "visible":
+                raise pw.TimeoutError("composer not visible")
+
+        editor.wait_for = AsyncMock(side_effect=wait_for)
 
         result = await create_post(session.session_id, "Test post content")
-
         assert result["status"] == "ok"
+
+        # Camino de fallback: /feed/ + Escape para modales + clic en el trigger
         mock_page.keyboard.press.assert_awaited_once_with("Escape")
+        trigger = mock_page.locator("button.share-box-feed-entry__trigger").first
+        assert trigger.click.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_create_post_publish_button_missing(self, patched_playwright):
+    async def test_create_post_all_publish_strategies_fail(self, patched_playwright):
         mock_page, _ = patched_playwright
         await open_browser()
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
-        for label in ("Publicar", "Post", "Publish"):
+        # Estrategia 1: botón primario no visible
+        primary = mock_page.locator('div[role="dialog"] button.artdeco-button--primary').first
+        primary.wait_for.side_effect = pw.TimeoutError("no primary")
+        # Estrategia 2: ninguna etiqueta visible
+        for label in ("Publicar", "Post", "Publish", "Publier"):
             loc = mock_page.get_by_role("button", name=label, exact=True)
-            loc.wait_for.side_effect = pw.TimeoutError("not found")
+            loc.wait_for.side_effect = pw.TimeoutError("no label")
+        # El composer nunca se cierra
+        editor = mock_page.locator('div[contenteditable="true"][role="textbox"]')
+
+        async def wait_for(**kwargs):
+            if kwargs.get("state") == "detached":
+                raise pw.TimeoutError("still open")
+
+        editor.wait_for = AsyncMock(side_effect=wait_for)
+        # Estrategia 3: el atajo de teclado falla
+        mock_page.keyboard.press = AsyncMock(side_effect=RuntimeError("keyboard blocked"))
 
         result = await create_post(session.session_id, "Test post content")
 
         assert result["status"] == "error"
-        assert "publish button not found" in result["message"]
+        assert "Could not publish" in result["message"]
         assert session._published is False
 
     @pytest.mark.asyncio
