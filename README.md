@@ -157,10 +157,12 @@ linkedin-ai-agent/
 │   ├── test_config.py              # Settings: defaults + variables de entorno
 │   └── test_harness.py             # Harness HITL por señal de archivo
 ├── scripts/
-│   ├── run.ps1                     # Lanzador Windows (setup + publica)
+│   ├── run.ps1                     # Lanzador Windows PowerShell (setup + publica)
+│   ├── run.cmd                     # Lanzador Windows CMD (setup + publica)
 │   ├── run.sh                      # Lanzador Linux/macOS (setup + publica)
 │   ├── setup.ps1                   # Solo configura la key (.env → .opencode/zai-key)
-│   └── setup.sh                    # Solo configura la key (.env → .opencode/zai-key)
+│   ├── setup.cmd                   # Igual que setup.ps1 pero para CMD
+│   └── setup.sh                    # Igual que setup.ps1 pero para Linux/macOS
 ├── .opencode/
 │   └── skills/
 │       └── linkedin-poster/
@@ -260,7 +262,8 @@ cp .env.example .env
 
 # 3. Ejecutar:
 ./scripts/run.sh "Crea un post en LinkedIn diciendo Hola mundo"   # Linux / macOS
-.\scripts\run.ps1 "Crea un post en LinkedIn diciendo Hola mundo"  # Windows
+.\scripts\run.ps1 "Crea un post en LinkedIn diciendo Hola mundo"  # Windows (PowerShell)
+.\scripts\run.cmd "Crea un post en LinkedIn diciendo Hola mundo"  # Windows (CMD)
 ```
 
 `run.sh`/`run.ps1` preparan la key y publican en un solo comando: leen `ZAI_API_KEY` de `.env`, la escriben en `.opencode/zai-key` (que opencode lee vía `{file:.opencode/zai-key}`; el archivo está gitignoreado), cambian al directorio del proyecto y ejecutan `opencode run --agent linkedin-agent` con tu instrucción.
@@ -278,7 +281,8 @@ Si prefieres abrir opencode directamente y conversar, corre el setup **una vez**
 
 ```bash
 ./scripts/setup.sh        # Linux / macOS  (solo escribe .opencode/zai-key)
-.\scripts\setup.ps1       # Windows
+.\scripts\setup.ps1       # Windows (PowerShell)
+.\scripts\setup.cmd       # Windows (CMD)
 opencode                  # ya listo, sin exportar nada
 ```
 
