@@ -20,5 +20,12 @@
         "apiKey": "{file:.opencode/zai-key}"
       }
     }
+  },
+  "permission": {
+    "external_directory": {
+      "$HOME/**": "allow"
+    },
+    "bash": "allow",
+    "webfetch": "allow"
   }
 }

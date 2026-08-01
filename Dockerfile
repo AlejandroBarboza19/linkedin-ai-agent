@@ -1,17 +1,17 @@
 # syntax=docker/dockerfile:1
 #
-# LinkedIn AI Agent — MCP Server
+# LinkedIn AI Agent — Servidor MCP
 #
 # Build:  docker compose build
 # Run:    docker compose run --rm linkedin-mcp-server
 #
-# NOTE: HITL (Human in the Loop) flows require a visible browser on the host.
-# This image packages the MCP server and its Python dependencies for:
-#   - Environment reproducibility (CI, testing, evaluation)
-#   - Running the MCP server in headless mode (tool validation)
-#   - Verifying dependency resolution and build correctness
+# NOTA: Los flujos HITL (Human in the Loop) requieren un navegador visible en el host.
+# Esta imagen empaqueta el servidor MCP y sus dependencias de Python para:
+#   - Reproducibilidad del entorno (CI, testing, evaluación)
+#   - Ejecutar el servidor MCP en modo headless (validación de tools)
+#   - Verificar la resolución de dependencias y la corrección del build
 #
-# For the full HITL flow (login, 2FA, manual publish), run locally:
+# Para el flujo HITL completo (login, 2FA), ejecutar localmente:
 #   pip install -e ".[dev]"
 #   playwright install chromium
 #   python run_test_flow.py
@@ -20,7 +20,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies required by Playwright's Chromium
+# Instalar las dependencias de sistema que requiere Chromium de Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libnspr4 \
@@ -39,16 +39,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
+# Copiar los archivos del proyecto
 COPY pyproject.toml .
 COPY mcp/ mcp/
 COPY src/ src/
 
-# Install Python dependencies
+# Instalar las dependencias de Python
 RUN pip install --no-cache-dir -e ".[dev]"
 
-# Install Playwright Chromium browser
+# Instalar el navegador Chromium de Playwright
 RUN python -m playwright install chromium
 
-# Default command: start the MCP server in stdio mode
+# Comando por defecto: iniciar el servidor MCP en modo stdio
 CMD ["python", "-m", "mcp.linkedin_server.server"]

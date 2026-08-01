@@ -5,9 +5,10 @@ from . import tools
 server = MCPServer(
     "linkedin_server",
     instructions=(
-        "LinkedIn automation server using Playwright (visible browser). "
+        "Servidor de automatización de LinkedIn usando Playwright (navegador visible). "
         "Flujo: open_browser → wait_for_human_auth → create_post → close_browser. "
-        "El usuario debe hacer login y 2FA manualmente en el navegador."
+        "El usuario debe hacer login y 2FA manualmente en el navegador. "
+        "La publicación del post es automática."
     ),
 )
 
@@ -35,7 +36,7 @@ async def verify_session_tool(session_id: str) -> str:
 
 @server.tool(
     name="create_post_tool",
-    description="Rellena el contenido en el editor de LinkedIn y prepara la publicación.",
+    description="Rellena el contenido en el editor de LinkedIn y publica el post automáticamente.",
 )
 async def create_post_tool(session_id: str, content: str) -> str:
     return str(await tools.create_post(session_id, content))

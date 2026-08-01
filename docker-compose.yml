@@ -8,8 +8,8 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    # HITL flows require a visible browser on the host.
-    # This service packages the server for environment validation and CI.
-    # Run locally with `python run_test_flow.py` for the full HITL flow.
+    # Los flujos HITL requieren un navegador visible en el host.
+    # Este servicio empaqueta el servidor para validación de entorno y CI.
+    # Ejecutar localmente con `python run_test_flow.py` para el flujo HITL completo.
     stdin_open: true
     tty: true

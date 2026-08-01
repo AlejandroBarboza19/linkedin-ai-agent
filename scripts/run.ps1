@@ -11,15 +11,15 @@ $Opendir = Join-Path $ProjectDir ".opencode"
 $KeyFile = Join-Path $Opendir "zai-key"
 
 if (-not (Test-Path -LiteralPath $EnvFile)) {
-    Write-Error ".env file not found at $EnvFile"
+    Write-Error "Archivo .env no encontrado en $EnvFile"
     Write-Host ""
-    Write-Host "  To get started, copy the example file:"
+    Write-Host "  Para empezar, copia el archivo de ejemplo:"
     Write-Host "    Copy-Item -Path '$ProjectDir\.env.example' -Destination '$EnvFile'"
-    Write-Host "  Then edit $EnvFile and set your ZAI_API_KEY (free at https://z.ai)."
+    Write-Host "  Luego edita $EnvFile y configura tu ZAI_API_KEY (gratis en https://z.ai)."
     exit 1
 }
 
-# Extract ZAI_API_KEY from .env and write it to .opencode/zai-key
+# Extraer ZAI_API_KEY de .env y escribirla en .opencode/zai-key
 $apiKey = $null
 Get-Content -LiteralPath $EnvFile | ForEach-Object {
     $line = $_.Trim()
@@ -37,11 +37,21 @@ Get-Content -LiteralPath $EnvFile | ForEach-Object {
 }
 
 if (-not $apiKey) {
-    Write-Error "ZAI_API_KEY not found in $EnvFile"
+    Write-Error "ZAI_API_KEY no encontrada en $EnvFile"
     exit 1
 }
 
 Set-Content -LiteralPath $KeyFile -Value $apiKey -NoNewline
+
+# Ejecutar opencode desde el directorio del proyecto, o el repo se percibe
+# como "directorio externo" y opencode bloquea el acceso en modo no interactivo.
+Set-Location -LiteralPath $ProjectDir
+
+# Sin instrucción, publicar "Hola mundo" por defecto (demo en un solo comando).
+$DEFAULT_PROMPT = "Publica un post 'Hola mundo'"
+if ($UserArgs.Count -eq 0) {
+    $UserArgs = @($DEFAULT_PROMPT)
+}
 
 & opencode run --agent linkedin-agent @UserArgs
 if (-not $?) {

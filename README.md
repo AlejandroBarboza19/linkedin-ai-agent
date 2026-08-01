@@ -1,16 +1,16 @@
 # LinkedIn AI Agent
 
-AI Agent Engineer project: an agentic system that publishes LinkedIn content using OpenCode, the Model Context Protocol (MCP), and Playwright — with mandatory Human in the Loop for authentication and critical actions.
+Proyecto de AI Agent Engineer: un sistema agéntico que publica contenido en LinkedIn usando OpenCode, el Protocolo de Contexto de Modelos (MCP) y Playwright — con Human in the Loop (HITL) obligatorio para la autenticación y las acciones críticas.
 
 ---
 
-## Objective
+## Objetivo
 
-Automate LinkedIn content publication through a browser-based agent that respects the platform's security boundaries. The agent never stores credentials, never automates login or 2FA, and never publishes without explicit human confirmation. Every sensitive step requires manual user intervention.
+Automatizar la publicación de contenido en LinkedIn mediante un agente basado en navegador que respeta los límites de seguridad de la plataforma. El agente nunca almacena credenciales y nunca automatiza el login ni el 2FA. La publicación se realiza automáticamente, pero solo después de la aprobación humana explícita del contenido. La autenticación (login + 2FA) siempre requiere intervención manual del usuario en un navegador visible.
 
 ---
 
-## Architecture
+## Arquitectura
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -23,209 +23,202 @@ Automate LinkedIn content publication through a browser-based agent that respect
 │                 │                                       │
 │  ┌──────────────▼──────────────────────────────────────┐│
 │  │  Skill: linkedin-poster                             ││
-│  │  - Pre-flight content validation                    ││
-│  │  - HITL coordination (login / publish)              ││
-│  │  - Orchestrates MCP tools                           ││
+│  │  - Validación pre-flight del contenido              ││
+│  │  - Coordinación HITL (login / 2FA)                   ││
+│  │  - Orquesta las herramientas MCP                    ││
 │  └──────────────┬──────────────────────────────────────┘│
 │                 │                                       │
 │  ┌──────────────▼──────────────────────────────────────┐│
 │  │  MCP Server: linkedin_server                        ││
-│  │  - Transport: stdio (local subprocess)               ││
-│  │  - 5 tools registered via @server.tool()             ││
+│  │  - Transporte: stdio (subproceso local)             ││
+│  │  - 5 herramientas registradas vía @server.tool()    ││
 │  └──────────────┬──────────────────────────────────────┘│
 │                 │                                       │
 │  ┌──────────────▼──────────────────────────────────────┐│
-│  │  Playwright (Chromium, visible browser)              ││
-│  │  - headless=False                                    ││
-│  │  - No stealth / evasion techniques                   ││
+│  │  Playwright (Chromium, navegador visible)           ││
+│  │  - headless=False                                   ││
+│  │  - Sin técnicas de stealth / evasión                ││
 │  └──────────────┬──────────────────────────────────────┘│
 │                 │                                       │
 │  ┌──────────────▼──────────────────────────────────────┐│
-│  │  LinkedIn (browser-based)                           ││
-│  │  - login via manual user interaction                 ││
-│  │  - 2FA via manual user interaction                   ││
-│  │  - Publish via manual click                          ││
+│  │  LinkedIn (basado en navegador)                     ││
+│  │  - login mediante interacción manual del usuario    ││
+│  │  - 2FA mediante interacción manual del usuario      ││
+│  │  - Publicación mediante clic automático              ││
 │  └─────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Component roles
+### Roles de los componentes
 
-| Layer | Role |
+| Capa | Rol |
 |---|---|
-| **OpenCode Agent** | Defines agent identity, safety rules, and HITL policies. Routes user requests to the appropriate skill. |
-| **Skill** | Validates content (length, sensitive data, links), coordinates the publication flow, and enforces HITL gates. |
-| **MCP Server** | Exposes browser control primitives as tools. Runs as a local stdio subprocess. Sessions are in-memory and ephemeral. |
-| **Playwright** | Launches a visible Chromium browser. All navigation and DOM interaction happens through the official Playwright async API. |
-| **LinkedIn** | Target platform. Accessed exclusively through the browser — no API keys, no tokens, no reverse-engineered endpoints. |
+| **OpenCode Agent** | Define la identidad del agente, las reglas de seguridad y las políticas HITL. Enruta las peticiones del usuario a la skill correspondiente. |
+| **Skill** | Valida el contenido (longitud, datos sensibles, enlaces), coordina el flujo de publicación y aplica los puntos de control HITL. |
+| **MCP Server** | Expone primitivas de control del navegador como herramientas. Se ejecuta como subproceso local por stdio. Las sesiones son en memoria y efímeras. |
+| **Playwright** | Lanza un navegador Chromium visible. Toda la navegación e interacción con el DOM se realiza a través de la API asíncrona oficial de Playwright. |
+| **LinkedIn** | Plataforma objetivo. Se accede exclusivamente a través del navegador — sin API keys, sin tokens, sin endpoints reversados. |
 
 ---
 
-## Human in the Loop Flow
+## Flujo Human in the Loop
 
 ```
-User requests content via chat
+El usuario solicita contenido por chat
     │
     ▼
-Pre-flight content validation (length, sensitive data, links)
+Validación pre-flight del contenido (longitud, datos sensibles, enlaces)
     │
     ▼
-[Gate 1] Agent shows preview and asks: "¿Confirmas que
-         quieres publicar esto?" ─── No ──→ Back to editing
-    │ Yes
+[Gate 1] El agente muestra el preview y pregunta: "¿Confirmas que
+         quieres publicar esto?" ─── No ──→ Vuelve a edición
+    │ Sí
     ▼
-open_browser_tool → visible Chromium at linkedin.com/login
+open_browser_tool → Chromium visible en linkedin.com/login
     │
     ▼
-[Gate 2] Agent notifies: "Navegador abierto. Inicia sesión."
-         User enters credentials + 2FA in the browser.
-         wait_for_human_auth_tool polls URL until /login is left
+[Gate 2] El agente notifica: "Navegador abierto. Inicia sesión."
+         El usuario ingresa credenciales + 2FA en el navegador.
+         wait_for_human_auth_tool sondea la URL hasta salir de /login
     │
     ▼
-verify_session_tool → navigates to /feed/ to confirm cookie validity
+verify_session_tool → navega a /feed/ para confirmar cookies válidas
     │
     ▼
-create_post_tool → opens editor, fills content
-                   ("Post" button is NOT clicked automatically)
+create_post_tool → abre el editor, escribe el contenido y hace clic
+                   en "Publicar" automáticamente
     │
     ▼
-[Gate 3] Agent asks via chat: "El post está listo en el editor.
-         Revisa el contenido y haz clic en 'Publicar' si estás de acuerdo."
-         User clicks "Post" manually, then confirms in chat.
+close_browser_tool → descarta las cookies de sesión y cierra el navegador
     │
     ▼
-close_browser_tool → discards session cookies, closes browser
-    │
-    ▼
-Agent notifies result via chat
+El agente notifica el resultado por chat
 ```
 
-**Three mandatory HITL gates — all coordinated via conversation:**
+**Dos puntos de control HITL obligatorios — coordinados por conversación:**
 
-1. **Content preview** — agent asks by chat, user approves or edits.
-2. **Login + 2FA** — agent opens the browser and notifies the user; the user authenticates in the visible browser; the agent detects the URL change.
-3. **Final publish** — agent fills the editor, asks for approval by chat; the user manually clicks "Post" in the browser and confirms by chat.
+1. **Preview del contenido** — el agente pregunta por chat; el usuario aprueba o edita.
+2. **Login + 2FA** — el agente abre el navegador y notifica al usuario; el usuario se autentica en el navegador visible; el agente detecta el cambio de URL.
+
+Una vez autenticado y aprobado el contenido, el agente rellena el editor y hace clic en "Publicar" automáticamente.
 
 ---
 
 ## MCP Server: `linkedin_server`
 
-Five tools registered via the MCP SDK v2 (`@server.tool()` decorator):
+Cinco herramientas registradas vía el SDK de MCP v2 (decorador `@server.tool()`):
 
 ### `open_browser_tool`
-- **Input:** `session_id` (optional string, auto-generated if empty)
-- **Output:** `{"status": "ok|error", "session_id": "...", "message": "..."}`
-- **Action:** Launches a visible Chromium browser and navigates to `https://www.linkedin.com/login`. Returns a session ID for subsequent tool calls.
+- **Entrada:** `session_id` (string opcional, se autogenera si está vacío)
+- **Salida:** `{"status": "ok|error", "session_id": "...", "message": "..."}`
+- **Acción:** Lanza un navegador Chromium visible y navega a `https://www.linkedin.com/login`. Registra un handler de `popup` para rastrear ventanas emergentes durante el flujo. Devuelve un ID de sesión para las llamadas posteriores.
 
 ### `wait_for_human_auth_tool`
-- **Input:** `session_id` (string), `timeout_minutes` (int, default 5)
-- **Output:** `{"status": "ok|error", "session_id": "...", "message": "..."}`
-- **Action:** Polls `page.url` every 2 seconds. When the URL no longer contains `/login`, authentication is assumed successful. Does not interact with login fields.
+- **Entrada:** `session_id` (string), `timeout_minutes` (int, por defecto 5)
+- **Salida:** `{"status": "ok|error", "session_id": "...", "message": "..."}`
+- **Acción:** Sondea `page.url` cada 2 segundos. Cuando la URL deja de contener `/login`, se asume que la autenticación fue exitosa. También detecta ventanas emergentes del flujo de seguridad (URLs con `checkpoint`, `feed` o `authwall`) como señal de autenticación. No interactúa con los campos de login.
 
 ### `verify_session_tool`
-- **Input:** `session_id` (string)
-- **Output:** `{"status": "ok|error", "session_id": "...", "message": "...", "active": bool}`
-- **Action:** Navigates to `https://www.linkedin.com/feed/`. If redirected back to `/login`, marks session as expired.
+- **Entrada:** `session_id` (string)
+- **Salida:** `{"status": "ok|error", "session_id": "...", "message": "...", "active": bool}`
+- **Acción:** Navega a `https://www.linkedin.com/feed/`. Si es redirigido de vuelta a `/login`, marca la sesión como expirada.
 
 ### `create_post_tool`
-- **Input:** `session_id` (string), `content` (string)
-- **Output:** `{"status": "ok|error", "session_id": "...", "message": "...", "content": "..."}`
-- **Action:** Navigates to /feed/, clicks the "Start a post" button (`div[role="button"]`), locates the contenteditable editor (`div[contenteditable="true"][role="textbox"]`), and writes the content. Does **not** click Publish.
+- **Entrada:** `session_id` (string), `content` (string)
+- **Salida:** `{"status": "ok|error", "session_id": "...", "message": "...", "content": "..."}`
+- **Acción:** Navega a /feed/, descarta modales/upsells in-page (Premium/Plus, cookies) con Escape o botones de cierre, hace clic en "Start a post" (`div[role="button"]`), localiza el editor contenteditable (`div[contenteditable="true"][role="textbox"]`), escribe el contenido y hace clic en el botón de publicar ("Publicar"/"Post") automáticamente. Luego espera a que se cierre el modal del editor para confirmar que el post fue publicado.
 
 ### `close_browser_tool`
-- **Input:** `session_id` (string)
-- **Output:** `{"status": "ok|error", "session_id": "...", "message": "..."}`
-- **Action:** Closes the page and browser, stops the Playwright driver, and removes the session from memory. Cookies are discarded.
+- **Entrada:** `session_id` (string)
+- **Salida:** `{"status": "ok|error", "session_id": "...", "message": "..."}`
+- **Acción:** Cierra la página y el navegador, detiene el driver de Playwright y elimina la sesión de la memoria. Las cookies se descartan.
 
 ---
 
-## Project Structure
+## Estructura del proyecto
 
 ```
 linkedin-ai-agent/
 ├── agents/
-│   └── linkedin_agent.md           # Agent definition (identity, safety rules)
+│   └── linkedin_agent.md           # Definición del agente (identidad, reglas de seguridad)
 ├── mcp/
 │   └── linkedin_server/
 │       ├── __init__.py
-│       ├── server.py               # MCP server (MCPServer, 5 tool bindings)
-│       └── tools.py                # Core logic (Playwright automation)
+│       ├── server.py               # Servidor MCP (MCPServer, 5 bindings de tools)
+│       └── tools.py                # Lógica principal (automatización Playwright)
 ├── src/
 │   ├── core/
-│   │   ├── agent_runner.py         # Placeholder
-│   │   └── config.py               # Pydantic settings (ZAI_API_KEY, env file)
-│   ├── services/
-│   │   └── linkedin_flow.py        # publish_post → create_post (MCP tools)
+│   │   └── config.py               # Settings Pydantic (ZAI_API_KEY, archivo env)
 │   └── telemetry/
-│       └── logger.py               # Logging setup
+│       └── logger.py               # Configuración de logging
 ├── tests/
-│   ├── test_mcp.py                 # 24 tests: MCP tools with mocked Playwright
-│   ├── test_agent.py               # Agent definition + skill frontmatter
-│   ├── test_config.py              # Settings: defaults + env vars
-│   └── test_harness.py             # HITL file-signal harness
+│   ├── test_mcp.py                 # 25 tests: tools MCP con Playwright mockeado
+│   ├── test_agent.py               # Definición del agente + frontmatter de la skill
+│   ├── test_config.py              # Settings: defaults + variables de entorno
+│   └── test_harness.py             # Harness HITL por señal de archivo
 ├── scripts/
-│   ├── run.ps1                     # Windows launcher (loads .env → zai-key)
-│   └── run.sh                      # Linux/macOS launcher (loads .env → zai-key)
+│   ├── run.ps1                     # Lanzador Windows (carga .env → zai-key)
+│   └── run.sh                      # Lanzador Linux/macOS (carga .env → zai-key)
 ├── .opencode/
 │   └── skills/
 │       └── linkedin-poster/
-│           └── SKILL.md            # Auto-discovered skill for OpenCode
-├── Dockerfile                      # MCP server image (Python + Chromium)
-├── docker-compose.yml              # Compose service definition
-├── opencode.jsonc                  # OpenCode configuration (MCP, agent, model)
-├── pyproject.toml                  # Python dependencies and project metadata
-├── conftest.py                     # Pytest path setup (root imports)
-├── run_test_flow.py                # End-to-end flow test (direct tool calls)
-├── .github/workflows/ci.yml        # CI pipeline (ruff + pytest + docker build)
-└── .env.example                    # Environment variable template
+│           └── SKILL.md            # Skill auto-descubierta por OpenCode
+├── Dockerfile                      # Imagen del servidor MCP (Python + Chromium)
+├── docker-compose.yml              # Definición del servicio en Compose
+├── opencode.jsonc                  # Configuración de OpenCode (MCP, agente, modelo)
+├── pyproject.toml                  # Dependencias Python y metadatos del proyecto
+├── conftest.py                     # Setup de paths de pytest (imports de raíz)
+├── run_test_flow.py                # Prueba del flujo end-to-end (llamadas directas a tools)
+├── .github/workflows/ci.yml        # Pipeline CI (ruff + pytest + docker build)
+└── .env.example                    # Plantilla de variables de entorno
 ```
 
 ---
 
-## Prerequisites
+## Prerrequisitos
 
 - **Python** >= 3.11
-- **Chromium** browser (installed via Playwright)
-- **OpenCode** CLI (for agent-based execution) — optional, direct tool invocation works without it
-- **ZAI API key** (free, from https://z.ai) if using the configured GLM model via OpenCode
+- **Chromium** (instalado vía Playwright)
+- **OpenCode** CLI (para ejecución basada en agente) — opcional, la invocación directa de tools funciona sin él
+- **ZAI API key** (gratis, de https://z.ai) si usas el modelo GLM configurado vía OpenCode
 
 ---
 
-## Installation
+## Instalación
 
 ```bash
-# 1. Clone the repository
-git clone <repo-url>
+# 1. Clonar el repositorio
+git clone https://github.com/AlejandroBarboza19/linkedin-ai-agent
 cd linkedin-ai-agent
 
-# 2. Create and activate a virtual environment
+# 2. Crear y activar un entorno virtual
 python -m venv .venv
 .venv\Scripts\activate    # Windows
 # source .venv/bin/activate   # macOS/Linux
 
-# 3. Install the package and development dependencies
+# 3. Instalar el paquete y las dependencias de desarrollo
 pip install -e ".[dev]"
 
-# 4. Install Chromium for Playwright
+# 4. Instalar Chromium para Playwright
 playwright install chromium
 ```
 
 ---
 
-## Configuration
+## Configuración
 
-Copy `.env.example` to `.env` and set your ZAI API key:
+Copia `.env.example` a `.env` y configura tu API key de ZAI:
 
 ```env
-ZAI_API_KEY=your-key-here
+ZAI_API_KEY=tu-key-aqui
 LOG_LEVEL=INFO
 ```
 
 ---
 
-## Docker (environment packaging)
+## Docker (empaquetado del entorno)
 
-Docker packages the MCP server with all dependencies for reproducible builds and CI validation. The HITL flow requires a visible browser on the host — use local execution for login, 2FA, and manual publishing.
+Docker empaqueta el servidor MCP con todas las dependencias para builds reproducibles y validación en CI. El flujo HITL requiere un navegador visible en el host — usa ejecución local para login y 2FA.
 
 ### Build
 
@@ -233,26 +226,26 @@ Docker packages the MCP server with all dependencies for reproducible builds and
 docker compose build
 ```
 
-### Run (headless — no browser UI)
+### Ejecutar (headless — sin UI del navegador)
 
 ```bash
 docker compose run --rm linkedin-mcp-server
 ```
 
-This starts the MCP server in stdio mode. It validates that all dependencies resolve and the server starts correctly.
+Esto inicia el servidor MCP en modo stdio. Valida que todas las dependencias resuelvan y que el servidor arranque correctamente.
 
-### What the image includes
+### Qué incluye la imagen
 
-| Component | Detail |
+| Componente | Detalle |
 |---|---|
-| Base image | `python:3.11-slim` |
-| System deps | `libnss3`, `libnspr4`, `libatk1.0-0`, `libcups2`, `libdrm2`, `libgbm1`, etc. (Playwright Chromium requirements) |
-| Python deps | Installed from `pyproject.toml` via `pip install -e ".[dev]"` |
-| Chromium | Installed via `playwright install chromium` |
+| Imagen base | `python:3.11-slim` |
+| Dependencias de sistema | `libnss3`, `libnspr4`, `libatk1.0-0`, `libcups2`, `libdrm2`, `libgbm1`, etc. (requisitos de Chromium de Playwright) |
+| Dependencias Python | Instaladas desde `pyproject.toml` vía `pip install -e ".[dev]"` |
+| Chromium | Instalado vía `playwright install chromium` |
 
 ---
 
-## Execution
+## Ejecución
 
 ### Ejecutar el agente
 
@@ -268,107 +261,121 @@ cp .env.example .env
 .\scripts\run.ps1 "Crea un post en LinkedIn diciendo Hola mundo"  # Windows
 ```
 
-El script lee la key de `.env`, la escribe en `.opencode/zai-key`, y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
+El script lee la key de `.env`, la escribe en `.opencode/zai-key`, cambia al directorio del proyecto y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
 
-### Test / demo flow (direct tool calls)
+Sin argumento, el script publica un post **"Hola mundo"** por defecto (demo en un solo comando). Si pasas una instrucción, usa la tuya:
 
-For quick verification of the browser automation pipeline:
+```bash
+./scripts/run.sh                                   # publica "Hola mundo"
+./scripts/run.sh "Escribe un post sobre IA"        # usa tu instrucción
+```
+
+### Nota sobre permisos de OpenCode
+
+Si OpenCode bloquea el acceso al proyecto como *"directorio externo"* (típico en `opencode run` no interactivo), el `opencode.jsonc` ya incluye una regla de `permission` para permitir `$HOME/**`. Como alternativa, ejecuta con auto-aprobación:
+
+```bash
+opencode run --auto --agent linkedin-agent "Escribe un post sobre tendencias de IA"
+```
+
+### Flujo de prueba / demo (llamadas directas a tools)
+
+Para verificar rápidamente el pipeline de automatización del navegador:
 
 ```bash
 python run_test_flow.py
 ```
 
-This script calls MCP tools directly (agent bypass) and uses a `.hitl_signal` file for HITL confirmation — suitable for testing and CI.
+Este script llama directamente a las tools MCP (sin agente) y usa un archivo `.hitl_signal` para la confirmación HITL — apto para pruebas y CI.
 
-### Agent flow (via OpenCode conversation — real HITL)
+### Flujo con agente (vía conversación en OpenCode — HITL real)
 
-The production flow uses OpenCode's conversational interface. HITL confirmation happens through chat, not file signals.
+El flujo de producción usa la interfaz conversacional de OpenCode. La confirmación HITL ocurre por chat, no por señales de archivo.
 
 Usa los scripts de `scripts/` para cargar `.env` automáticamente (ver [Ejecutar el agente](#ejecutar-el-agente)):
 
 ```bash
-./scripts/run.sh "Write a post about AI trends"
+./scripts/run.sh "Escribe un post sobre tendencias de IA"
 ```
 
 O manualmente (requiere la key en `.opencode/zai-key`):
 
 ```bash
 opencode
-# Then prompt: @linkedin-agent "Write a post about AI trends"
+# Luego el prompt: @linkedin-agent "Escribe un post sobre tendencias de IA"
 ```
 
-The agent orchestrates the full flow:
-1. Requests content, validates, shows preview, asks for confirmation via chat
-2. Opens the browser, the user logs in manually (visible browser)
-3. Writes content in the editor, then asks via chat for final approval
-4. The user clicks "Post" manually in the browser and confirms in chat
-5. The agent closes the browser
+El agente orquesta el flujo completo:
+1. Solicita contenido, valida, muestra preview y pide confirmación por chat
+2. Abre el navegador, el usuario inicia sesión manualmente (navegador visible, incluido el 2FA)
+3. Rellena el editor y hace clic en "Publicar" automáticamente
+4. Cierra el navegador y reporta el resultado
 
-### Via MCP server (stdio)
+### Vía servidor MCP (stdio)
 
 ```bash
 python -m mcp.linkedin_server.server
 ```
 
-The server listens on stdin/stdout and can be connected by any MCP client. Tools are invoked via the standard MCP request/response protocol.
+El servidor escucha en stdin/stdout y puede ser conectado por cualquier cliente MCP. Las tools se invocan mediante el protocolo estándar de request/response de MCP.
 
 ---
 
 ## Testing
 
 ```bash
-# Run all tests
+# Ejecutar todos los tests
 pytest
 
-# Run with verbose output
+# Ejecutar con salida verbose
 pytest -v
 
-# Run specific test file
+# Ejecutar un archivo específico
 pytest tests/test_mcp.py -v
 ```
 
-**Current test coverage (33 tests):**
+**Cobertura de tests actual (37 tests):**
 
-| Test file | Tests | Scope |
+| Archivo de tests | Tests | Alcance |
 |---|---|---|
-| `tests/test_mcp.py` | 24 | MCP tools with full Playwright mocking |
-| `tests/test_agent.py` | 3 | Agent definition + skill frontmatter |
-| `tests/test_config.py` | 2 | Settings defaults and env vars |
-| `tests/test_harness.py` | 4 | HITL file-signal harness |
+| `tests/test_mcp.py` | 28 | Tools MCP con mockeo completo de Playwright |
+| `tests/test_agent.py` | 3 | Definición del agente + frontmatter de la skill |
+| `tests/test_config.py` | 2 | Defaults de settings y variables de entorno |
+| `tests/test_harness.py` | 4 | Harness HITL por señal de archivo |
 
-All MCP tool functions are tested with mocked `async_playwright`, covering success paths, error handling, and the full happy-path flow.
+Todas las tools MCP están testeadas con `async_playwright` mockeado, cubriendo paths de éxito, manejo de errores y el flujo happy-path completo.
 
-**CI pipeline (`.github/workflows/ci.yml`):** `ruff check .` → `pytest` → `docker build` (validates the MCP server image).
+**Pipeline CI (`.github/workflows/ci.yml`):** `ruff check .` → `pytest` → `docker build` (valida la imagen del servidor MCP).
 
 ---
 
-## Security Decisions
+## Decisiones de seguridad
 
-| Principle | Implementation |
+| Principio | Implementación |
 |---|---|
-| **No credential storage** | Credentials are never read, written, or logged by the agent. Login fields are never populated programmatically. |
-| **No cookie persistence** | The browser context is ephemeral. Closing the browser via `close_browser_tool` discards all session cookies. No cookies are serialized to disk. |
-| **No authentication bypass** | The agent never attempts to bypass login, 2FA, CAPTCHA, or any LinkedIn security mechanism. It only detects that authentication has occurred. |
-| **Minimum privilege** | The agent only automates post creation. It does not modify profiles, send messages, manage connections, or perform any action beyond the publication flow. |
-| **Audit logging** | A logger component is available in `src/telemetry/logger.py` for timestamped action records (credentials are never included). |
-| **Session isolation** | Each run creates a fresh Playwright session. Session IDs are UUIDs held only in memory. Consecutive runs have no shared state. |
+| **Sin almacenamiento de credenciales** | Las credenciales nunca se leen, escriben ni loguean. Los campos de login nunca se rellenan programáticamente. |
+| **Sin persistencia de cookies** | El contexto del navegador es efímero. Cerrar el navegador con `close_browser_tool` descarta todas las cookies de sesión. No se serializan cookies a disco. |
+| **Sin bypass de autenticación** | El agente nunca intenta evadir login, 2FA, CAPTCHA ni ningún mecanismo de seguridad de LinkedIn. Solo detecta que la autenticación ocurrió. |
+| **Privilegio mínimo** | El agente solo automatiza la creación de posts. No modifica perfiles, envía mensajes, gestiona conexiones ni realiza acciones fuera del flujo de publicación. |
+| **Audit logging** | Un componente de logging está disponible en `src/telemetry/logger.py` para registros con timestamp (las credenciales nunca se incluyen). |
+| **Aislamiento de sesiones** | Cada ejecución crea una sesión nueva de Playwright. Los IDs de sesión son UUIDs que solo viven en memoria. Ejecuciones consecutivas no comparten estado. |
 
 ---
 
-## Limitations
+## Limitaciones
 
-| Limitation | Description | Potential improvement |
+| Limitación | Descripción | Mejora potencial |
 |---|---|---|
-| **No session persistence** | Sessions are in-memory only. If the MCP connection drops, the browser closes. | Implement browser context serialization or a long-running server with keepalive. |
-| **Locale-dependent selectors** | The "Start a post" button selector targets Spanish text (`name="Crear"`). Fails on English or other locales. | Use ARIA role selectors or detect locale from page metadata. |
-| **`src/core/agent_runner.py`** | Empty placeholder. | Implement the runner that bridges the OpenCode agent to the MCP tools. |
-| **No CI e2e test** | The CI workflow only runs unit tests with mocks. Real Playwright tests require a display server. | Add a CI job with `xvfb` for headful Playwright in CI. |
-| **No image/video support** | Currently only plain text posts. | Extend `create_post_tool` to handle media uploads through the LinkedIn editor. |
-| **Error recovery** | If the user closes the browser tab mid-flow, the tool returns an error and exits. | Add browser crash detection and session recovery logic. |
-| **LinkedIn DOM changes** | Selectors (`div[role="button"]`, `div[contenteditable="true"]`) may break if LinkedIn updates its UI. | Add a selector health-check tool and fallback strategies. |
+| **Sin persistencia de sesión** | Las sesiones son solo en memoria. Si la conexión MCP se cae, el navegador se cierra. | Implementar serialización del contexto del navegador o un servidor de larga duración con keepalive. |
+| **Selectores dependientes del locale** | El selector del botón "Start a post" apunta al texto en español (`name="Crear"`). Falla en inglés u otros idiomas. | Usar selectores por rol ARIA o detectar el locale desde los metadatos de la página. |
+| **Sin test e2e en CI** | El workflow de CI solo ejecuta unit tests con mocks. Los tests reales de Playwright requieren un servidor de display. | Añadir un job de CI con `xvfb` para Playwright headful en CI. |
+| **Popup y modales de LinkedIn** | Se rastrean popups y se descartan modales in-page, pero una ventana emergente desconocida podría interceptar el flujo. | Ampliar el mapeo de URLs de popup y selectores de cierre según cambios de UI de LinkedIn. |
+| **Sin soporte de imágenes/video** | Actualmente solo posts de texto plano. | Extender `create_post_tool` para manejar subidas de medios en el editor de LinkedIn. |
+| **Recuperación de errores** | Si el usuario cierra la pestaña del navegador a mitad del flujo, la tool devuelve un error y termina. | Añadir detección de crash del navegador y lógica de recuperación de sesión. |
+| **Cambios en el DOM de LinkedIn** | Los selectores (`div[role="button"]`, `div[contenteditable="true"]`) pueden romperse si LinkedIn actualiza su UI. | Añadir una tool de health-check de selectores y estrategias de fallback. |
 
 ---
 
-## License
+## Licencia
 
 MIT

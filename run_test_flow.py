@@ -1,18 +1,19 @@
 """
-Test / demo flow for the LinkedIn AI Agent.
+Flujo de prueba / demo del LinkedIn AI Agent.
 
-This script exercises all MCP tools directly (bypassing the OpenCode agent)
-to verify the browser automation pipeline end-to-end.
+Este script ejercita todas las tools MCP directamente (sin pasar por el agente
+de OpenCode) para verificar el pipeline de automatización del navegador
+de principio a fin.
 
-HITL confirmation uses a file signal (.hitl_signal) as a simple mechanism
-for automated and CI testing.
+La confirmación HITL usa una señal por archivo (.hitl_signal) como mecanismo
+simple para pruebas automatizadas y CI.
 
-For the REAL agent flow (via OpenCode conversation), see:
+Para el flujo REAL del agente (vía conversación con OpenCode), ver:
   - agents/linkedin_agent.md
   - .opencode/skills/linkedin-poster/SKILL.md
 
-In the real flow, HITL confirmation happens through chat conversation,
-NOT through file signals.
+En el flujo real, la confirmación HITL ocurre por conversación,
+NO mediante señales por archivo.
 """
 
 import asyncio
@@ -64,13 +65,13 @@ async def wait_for_signal(label="confirmacion", timeout_minutes=60):
 
 
 async def main():
-    # Step 1: Open browser
+    # Paso 1: Abrir navegador
     print("[1/5] Abriendo navegador...", flush=True)
     result = await open_browser()
     sid = result["session_id"]
     print(f"  Session ID: {sid}", flush=True)
 
-    # Step 2: Wait for user to confirm login manually
+    # Paso 2: Esperar a que el usuario confirme el login manualmente
     print("\n[2/5] ESPERANDO QUE INICIES SESION", flush=True)
     print("  El navegador se abrio en linkedin.com/login", flush=True)
     print("  Inicia sesion y resuelve 2FA manualmente en el navegador.", flush=True)
@@ -83,11 +84,11 @@ async def main():
         await close_browser(sid)
         return
 
-    # Confirm auth status in the session
+    # Confirmar el estado de autenticación en la sesión
     auth_result = await wait_for_human_auth(sid, timeout_minutes=0.1)
     print(f"  Auth: {auth_result['message']}", flush=True)
 
-    # Step 3: Verify session
+    # Paso 3: Verificar sesión
     print("\n[3/5] Verificando sesion...", flush=True)
     verify_result = await verify_active_session(sid)
     print(f"  {verify_result}", flush=True)
@@ -97,30 +98,19 @@ async def main():
         await close_browser(sid)
         return
 
-    # Step 4: Confirm publish
+    # Paso 4: Confirmar publicación
     print("\n[4/5] CONFIRMAR PUBLICACION", flush=True)
     await clean_signal()
     confirmed = await wait_for_signal("confirmar publicacion")
 
     if confirmed:
-        print("\n  Preparando post en el editor...", flush=True)
+        print("\n  Publicando post en LinkedIn...", flush=True)
         post_result = await create_post(sid, "Hola mundo")
         print(f"  {post_result}", flush=True)
-
-        if post_result.get("status") == "ok":
-            print("\n  Ve al navegador, verifica el contenido y haz clic en 'Post'.", flush=True)
-            print("  Presiona Ctrl+C cuando termines.", flush=True)
-            try:
-                while True:
-                    await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                pass
-        else:
-            print(f"\n  Error al preparar post: {post_result.get('message', 'desconocido')}", flush=True)
     else:
         print("\n  Publicacion cancelada por el usuario.", flush=True)
 
-    # Step 5: Close browser
+    # Paso 5: Cerrar navegador
     print("\n[5/5] Cerrando navegador...", flush=True)
     close_result = await close_browser(sid)
     print(f"  {close_result}", flush=True)

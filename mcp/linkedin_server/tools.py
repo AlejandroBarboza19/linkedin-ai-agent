@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 import playwright.async_api as pw
 
+from src.telemetry.logger import logger
+
 
 @dataclass
 class BrowserSession:
@@ -15,6 +17,8 @@ class BrowserSession:
     is_authenticated: bool = False
     created_at: float = field(default_factory=time.time)
     _post_content: str = ""
+    _published: bool = False
+    popup_pages: list = field(default_factory=list)
 
 
 class SessionManager:
@@ -35,6 +39,46 @@ class SessionManager:
 
 sessions = SessionManager()
 
+# URLs/selectores que indican que una ventana emergente pertenece al flujo
+# de autenticación y NO debe cerrarse automáticamente.
+_AUTH_POPUP_KEYWORDS = ("checkpoint", "feed", "authwall")
+
+# Selectores de botones de cierre para modales/upsells in-page (Premium, cookies).
+_CLOSE_BUTTON_SELECTORS = (
+    'button[aria-label="Dismiss"]',
+    'button[aria-label="Close"]',
+    'button[aria-label="Cerrar"]',
+    ".artdeco-modal__dismiss",
+)
+
+
+async def _dismiss_inpage_modals(session: BrowserSession) -> None:
+    """Cierra modales/upsells in-page (Premium/Plus, cookies) de forma segura.
+
+    Solo presiona Escape e intenta botones de cierre explícitos. Nunca toca
+    elementos de autenticación ni confirma diálogos.
+    """
+    page = session.page
+    if page is None:
+        return
+    try:
+        await page.keyboard.press("Escape")
+    except Exception as e:
+        logger.debug("Escape dismiss failed: %s", e)
+    for selector in _CLOSE_BUTTON_SELECTORS:
+        try:
+            btn = page.locator(selector).first
+            await btn.wait_for(state="visible", timeout=800)
+            await btn.click()
+            break
+        except Exception as e:
+            logger.debug("No dismiss button %s: %s", selector, e)
+
+
+def _is_auth_popup(url: str) -> bool:
+    """True si la URL de la ventana emergente pertenece al flujo de login."""
+    return any(keyword in url for keyword in _AUTH_POPUP_KEYWORDS)
+
 
 async def open_browser(session_id: str | None = None) -> dict:
     """Abre un navegador visible (no headless) con Playwright y navega a linkedin.com/login."""
@@ -46,6 +90,11 @@ async def open_browser(session_id: str | None = None) -> dict:
         p = await pw.async_playwright().start()
         browser = await p.chromium.launch(headless=False)
         page = await browser.new_page()
+
+        def _track_popup(popup: pw.Page) -> None:
+            session.popup_pages.append(popup)
+
+        page.on("popup", _track_popup)
         await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
 
         session.playwright = p
@@ -81,7 +130,8 @@ async def wait_for_human_auth(session_id: str, timeout_minutes: int = 5, poll_se
         start = time.time()
         while time.time() - start < timeout_minutes * 60:
             current_url = session.page.url
-            if "/login" not in current_url:
+            popup_urls = [p.url for p in session.popup_pages if p.url]
+            if "/login" not in current_url or any(_is_auth_popup(u) for u in popup_urls):
                 session.is_authenticated = True
                 return {
                     "status": "ok",
@@ -132,10 +182,10 @@ async def verify_active_session(session_id: str) -> dict:
 
 
 async def create_post(session_id: str, content: str) -> dict:
-    """Navega al feed de LinkedIn, abre el editor de posts y escribe el contenido.
+    """Navega al feed de LinkedIn, abre el editor, escribe el contenido y publica.
 
-    NOTA: El clic en Publicar requiere confirmación humana (HITL).
-    Esta tool solo prepara el editor y deja el post listo para revisión.
+    El clic en "Publicar" se ejecuta automáticamente. El HITL queda reservado
+    para el login y 2FA, que el usuario completa manualmente en el navegador.
     """
     session = sessions.get_session(session_id)
     if session is None:
@@ -149,19 +199,23 @@ async def create_post(session_id: str, content: str) -> dict:
         await session.page.goto("https://www.linkedin.com/feed/", wait_until="load", timeout=30000)
         await asyncio.sleep(2)
 
-        # Click the "Start a post" button (varies by locale)
+        # Cerrar modales/upsells in-page (Premium/Plus, cookies) que puedan
+        # interceptar los clics sobre el editor de posts.
+        await _dismiss_inpage_modals(session)
+
+        # Click en el botón "Start a post" (varía según el locale)
         create_btn = session.page.get_by_role("button", name="Crear")
         try:
             await create_btn.wait_for(timeout=5000)
         except Exception:
-            # Fallback: try English locale or generic selector
+            # Fallback: intentar locale en inglés o selector genérico
             create_btn = session.page.locator('div[role="button"]').filter(has_text="Crear")
             await create_btn.wait_for(timeout=5000)
         await create_btn.click()
 
         await asyncio.sleep(1)
 
-        # Find the editor (contenteditable div inside the post modal)
+        # Buscar el editor (div contenteditable dentro del modal de post)
         editor = session.page.locator('div[contenteditable="true"][role="textbox"]')
         try:
             await editor.wait_for(timeout=5000)
@@ -170,12 +224,39 @@ async def create_post(session_id: str, content: str) -> dict:
             await editor.wait_for(timeout=5000)
         await editor.fill(content)
 
+        # Click en el botón de publicar automáticamente (la etiqueta varía según el locale)
+        publish_btn = None
+        for label in ("Publicar", "Post"):
+            candidate = session.page.get_by_role("button", name=label, exact=True)
+            try:
+                await candidate.wait_for(timeout=3000)
+            except pw.TimeoutError:
+                publish_btn = None
+            else:
+                publish_btn = candidate
+                break
+        if publish_btn is None:
+            return {
+                "status": "error",
+                "session_id": session_id,
+                "message": "Editor filled but publish button not found. Locale may have changed.",
+            }
+
+        await publish_btn.click()
+
+        # Esperar a que el modal del editor se cierre, confirmando la publicación
+        try:
+            await editor.wait_for(state="detached", timeout=10000)
+        except pw.TimeoutError:
+            logger.warning("Composer modal did not close in time after publishing")
+
         session._post_content = content
+        session._published = True
 
         return {
             "status": "ok",
             "session_id": session_id,
-            "message": "Editor opened and content written. User must review and click Publish manually.",
+            "message": "Post published successfully.",
             "content": content,
         }
     except pw.TimeoutError:

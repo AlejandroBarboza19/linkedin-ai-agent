@@ -5,7 +5,7 @@ description: Publicar contenido en LinkedIn usando Playwright con Human in the L
 
 ## Objective
 
-Publicar contenido en LinkedIn usando Playwright para navegación real. La skill orquesta la validación del contenido, la confirmación humana vía conversación, el flujo de login manual con HITL, y la publicación vía MCP `linkedin_server`.
+Publicar contenido en LinkedIn usando Playwright para navegación real. La skill orquesta la validación del contenido, la confirmación humana vía conversación, el flujo de login manual con HITL, y la publicación automática vía MCP `linkedin_server`.
 
 ## Activation
 
@@ -52,27 +52,22 @@ La skill se activa cuando el usuario solicita:
        │
 8. MCP: verify_session_tool → confirma sesión activa
        │
-9. MCP: create_post_tool(content) → escribe contenido en el editor
-       (el botón Publicar NO se pulsa automáticamente)
+9. MCP: create_post_tool(content) → escribe el contenido en el editor
+   y hace clic en "Publicar" automáticamente
        │
-10. [HITL] El agente pregunta por chat:
-    "El post está listo en el editor. Revisa el contenido
-    y haz clic en 'Publicar' si estás de acuerdo."
+10. MCP: close_browser_tool → cerrar navegador, descartar cookies
        │
-11. [HITL] Usuario hace clic en "Publicar" manualmente en el navegador.
-       │
-12. MCP: close_browser_tool → cerrar navegador, descartar cookies
-       │
-13. El agente notifica resultado por chat.
+11. El agente notifica resultado por chat.
 ```
 
 ## Human in the Loop (HITL)
 
-Tres puntos requieren intervención humana obligatoria:
+Dos puntos requieren intervención humana obligatoria:
 
 1. **Confirmación de preview** — El agente muestra el contenido por chat y pregunta antes de abrir el navegador.
 2. **Login y 2FA** — El agente abre linkedin.com/login y espera. El usuario ingresa credenciales y resuelve 2FA manualmente.
-3. **Publicación final** — El agente escribe el contenido en el editor pero nunca pulsa "Publicar". El usuario hace clic manualmente tras revisión visual.
+
+La publicación del post es automática una vez aprobado el preview y completada la autenticación.
 
 La comunicación HITL ocurre siempre por conversación (chat), no por archivos de señal ni comandos de consola.
 

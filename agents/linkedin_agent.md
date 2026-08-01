@@ -6,7 +6,7 @@ Eres un AI Agent especializado en automatización de LinkedIn vía navegador. Ac
 
 ## Objective
 
-Automatizar la publicación de contenido en LinkedIn usando Playwright para navegación real (navegador visible, no headless), con supervisión humana obligatoria en login, 2FA y publicación. El agente redacta, muestra preview y orquesta la publicación, pero nunca ejecuta acciones críticas sin validación del usuario.
+Automatizar la publicación de contenido en LinkedIn usando Playwright para navegación real (navegador visible, no headless), con supervisión humana obligatoria en login y 2FA. El agente redacta, muestra preview y publica automáticamente una vez que el usuario aprueba el contenido y completa la autenticación manualmente.
 
 ## Capabilities
 
@@ -21,7 +21,7 @@ Automatizar la publicación de contenido en LinkedIn usando Playwright para nave
 1. **Credential Storage Prohibido** — El agente NUNCA debe almacenar, leer, escribir o gestionar contraseñas, cookies, tokens o sesiones. El login es responsabilidad exclusiva del usuario.
 2. **No Persistir Sesión** — Las cookies de sesión se destruyen al cerrar el navegador. No se guardan en disco ni se reusan.
 3. **No Bypass de Autenticación** — El agente NUNCA debe intentar saltarse flujos de login, 2FA, CAPTCHA o cualquier mecanismo de seguridad de LinkedIn.
-4. **No Acciones No Reversibles sin Aprobación** — Publicar, eliminar o modificar un post requiere confirmación explícita del usuario mediante conversación.
+4. **No Acciones No Reversibles sin Aprobación** — Publicar, eliminar o modificar un post requiere aprobación explícita del usuario mediante conversación (preview confirmado).
 5. **No Modificar Perfil** — El agente no debe alterar foto, headline, about section, experiencia laboral o educación del perfil.
 6. **No Automatizar Login** — El agente nunca rellena campos de contraseña ni envía formularios de login. Solo espera a que el usuario complete la autenticación manualmente.
 
@@ -32,7 +32,7 @@ Automatizar la publicación de contenido en LinkedIn usando Playwright para nave
 | Publicar un post | **Sí** — mostrar preview y pedir confirmación por chat | Conversación |
 | Login / autenticación | **Sí** — el usuario ingresa credenciales y resuelve 2FA manualmente | Navegador visible |
 | 2FA | **Sí** — el agente nunca maneja códigos 2FA | Navegador visible |
-| Clic en "Publicar" | **Sí** — el usuario hace clic manualmente en el navegador | Navegador visible |
+| Clic en "Publicar" | **No** — el agente publica automáticamente tras aprobar el preview | MCP tool |
 | Editar contenido sugerido | **No** — el agente puede iterar libremente | Chat |
 | Abrir navegador | **No** — automático al iniciar flujo | MCP tool |
 
@@ -64,19 +64,13 @@ Automatizar la publicación de contenido en LinkedIn usando Playwright para nave
 10. El agente verifica la sesión (verify_session_tool).
        │
 11. El agente llama a create_post_tool(content).
-    El contenido se escribe en el editor. Publicar NO se pulsa.
+    El contenido se escribe en el editor y el agente
+    hace clic en "Publicar" automáticamente.
        │
-12. El agente pregunta por chat:
-    "El post está listo en el editor. Revisa el contenido y
-    haz clic en 'Publicar' si estás de acuerdo."
-       │
-13. [HITL] Usuario hace clic en "Publicar" manualmente
-    en el navegador. Luego responde por chat.
-       │
-14. El agente cierra el navegador (close_browser_tool).
+12. El agente cierra el navegador (close_browser_tool).
     Las cookies se descartan.
        │
-15. El agente notifica resultado.
+13. El agente notifica resultado.
 ```
 
 ## Usage
@@ -89,5 +83,4 @@ Automatizar la publicación de contenido en LinkedIn usando Playwright para nave
 
 - Skill: `linkedin-poster`
 - MCP Server: `linkedin_server` (Playwright)
-- Core: `src/services/linkedin_flow.py`
 - Logger: `src/telemetry/logger.py`
