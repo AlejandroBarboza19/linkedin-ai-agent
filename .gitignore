@@ -14,6 +14,5 @@ env/
 .ruff_cache/
 .opencode/auth/
 .opencode/openrouter-key
-.opencode/zai-key
 *.png
 .hitl_signal

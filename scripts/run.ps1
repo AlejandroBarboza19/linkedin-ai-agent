@@ -7,8 +7,6 @@ param(
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
 $EnvFile = Join-Path $ProjectDir ".env"
-$Opendir = Join-Path $ProjectDir ".opencode"
-$KeyFile = Join-Path $Opendir "zai-key"
 
 if (-not (Test-Path -LiteralPath $EnvFile)) {
     Write-Error "Archivo .env no encontrado en $EnvFile"
@@ -19,7 +17,7 @@ if (-not (Test-Path -LiteralPath $EnvFile)) {
     exit 1
 }
 
-# Extraer ZAI_API_KEY de .env y escribirla en .opencode/zai-key
+# Extraer ZAI_API_KEY de .env y exportarla para opencode
 $apiKey = $null
 Get-Content -LiteralPath $EnvFile | ForEach-Object {
     $line = $_.Trim()
@@ -41,7 +39,7 @@ if (-not $apiKey) {
     exit 1
 }
 
-Set-Content -LiteralPath $KeyFile -Value $apiKey -NoNewline
+$env:ZAI_API_KEY = $apiKey
 
 # Ejecutar opencode desde el directorio del proyecto, o el repo se percibe
 # como "directorio externo" y opencode bloquea el acceso en modo no interactivo.

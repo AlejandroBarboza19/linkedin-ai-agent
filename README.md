@@ -157,8 +157,8 @@ linkedin-ai-agent/
 │   ├── test_config.py              # Settings: defaults + variables de entorno
 │   └── test_harness.py             # Harness HITL por señal de archivo
 ├── scripts/
-│   ├── run.ps1                     # Lanzador Windows (carga .env → zai-key)
-│   └── run.sh                      # Lanzador Linux/macOS (carga .env → zai-key)
+│   ├── run.ps1                     # Lanzador Windows (carga .env y exporta la key)
+│   └── run.sh                      # Lanzador Linux/macOS (carga .env y exporta la key)
 ├── .opencode/
 │   └── skills/
 │       └── linkedin-poster/
@@ -261,7 +261,7 @@ cp .env.example .env
 .\scripts\run.ps1 "Crea un post en LinkedIn diciendo Hola mundo"  # Windows
 ```
 
-El script lee la key de `.env`, la escribe en `.opencode/zai-key`, cambia al directorio del proyecto y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
+El script lee la key de `.env`, la exporta como `ZAI_API_KEY`, cambia al directorio del proyecto y ejecuta `opencode run --agent linkedin-agent` con tu instrucción. No necesitas exportar nada manualmente.
 
 Sin argumento, el script publica un post **"Hola mundo"** por defecto (demo en un solo comando). Si pasas una instrucción, usa la tuya:
 
@@ -298,7 +298,7 @@ Usa los scripts de `scripts/` para cargar `.env` automáticamente (ver [Ejecutar
 ./scripts/run.sh "Escribe un post sobre tendencias de IA"
 ```
 
-O manualmente (requiere la key en `.opencode/zai-key`):
+O manualmente (OpenCode carga `.env` del proyecto y resuelve `ZAI_API_KEY` automáticamente):
 
 ```bash
 opencode

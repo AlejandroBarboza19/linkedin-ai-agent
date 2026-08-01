@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env"
-KEY_FILE="$PROJECT_DIR/.opencode/zai-key"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "ERROR: Archivo .env no encontrado en $ENV_FILE" >&2
@@ -15,13 +14,13 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Extraer ZAI_API_KEY de .env y escribirla en .opencode/zai-key
+# Extraer ZAI_API_KEY de .env y exportarla para opencode
 API_KEY=$(grep -E '^ZAI_API_KEY=' "$ENV_FILE" | head -1 | cut -d '=' -f2- | tr -d '[:space:]')
 if [ -z "$API_KEY" ]; then
   echo "ERROR: ZAI_API_KEY no encontrada en $ENV_FILE" >&2
   exit 1
 fi
-printf '%s' "$API_KEY" > "$KEY_FILE"
+export ZAI_API_KEY="$API_KEY"
 
 # Ejecutar opencode desde el directorio del proyecto, o el repo se percibe
 # como "directorio externo" y opencode bloquea el acceso en modo no interactivo.
