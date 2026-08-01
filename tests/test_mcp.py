@@ -30,6 +30,8 @@ def mock_playwright():
     mock_page.keyboard = MagicMock()
     mock_page.keyboard.press = AsyncMock()
     mock_page.on = MagicMock()
+    mock_page.viewport_size = AsyncMock(return_value={"width": 1366, "height": 768})
+    mock_page.set_viewport_size = AsyncMock()
 
     def make_locator():
         loc = AsyncMock()
@@ -304,7 +306,7 @@ class TestCreatePost:
         session = next(iter(sessions._sessions.values()))
         session.is_authenticated = True
 
-        for label in ("Publicar", "Post"):
+        for label in ("Publicar", "Post", "Publish"):
             loc = mock_page.get_by_role("button", name=label, exact=True)
             loc.wait_for.side_effect = pw.TimeoutError("not found")
 
@@ -313,6 +315,19 @@ class TestCreatePost:
         assert result["status"] == "error"
         assert "publish button not found" in result["message"]
         assert session._published is False
+
+    @pytest.mark.asyncio
+    async def test_create_post_resizes_small_window(self, patched_playwright):
+        mock_page, _ = patched_playwright
+        mock_page.viewport_size = AsyncMock(return_value={"width": 640, "height": 480})
+        await open_browser()
+        session = next(iter(sessions._sessions.values()))
+        session.is_authenticated = True
+
+        result = await create_post(session.session_id, "Test post content")
+
+        assert result["status"] == "ok"
+        mock_page.set_viewport_size.assert_awaited_once_with({"width": 1280, "height": 800})
 
 
 class TestCloseBrowser:

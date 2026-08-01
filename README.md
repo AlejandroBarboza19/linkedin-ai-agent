@@ -126,7 +126,7 @@ Cinco herramientas registradas vía el SDK de MCP v2 (decorador `@server.tool()`
 ### `create_post_tool`
 - **Entrada:** `session_id` (string), `content` (string)
 - **Salida:** `{"status": "ok|error", "session_id": "...", "message": "...", "content": "..."}`
-- **Acción:** Navega a /feed/, descarta modales/upsells in-page (Premium/Plus, cookies) con Escape o botones de cierre, hace clic en "Start a post" (`div[role="button"]`), localiza el editor contenteditable (`div[contenteditable="true"][role="textbox"]`), escribe el contenido y hace clic en el botón de publicar ("Publicar"/"Post") automáticamente. Luego espera a que se cierre el modal del editor para confirmar que el post fue publicado.
+- **Acción:** Navega a /feed/, si la ventana es demasiado pequeña la agranda automáticamente (los layouts responsivos de LinkedIn ocultan botones), descarta modales/upsells in-page (Premium/Plus, cookies) con Escape o botones de cierre, hace clic en "Start a post" (`div[role="button"]`), localiza el editor contenteditable (`div[contenteditable="true"][role="textbox"]`), escribe el contenido y hace clic en el botón de publicar ("Publicar"/"Post"/"Publish") automáticamente. Si no encuentra los botones, devuelve un error indicando que se maximice la ventana y se reintente. Luego espera a que se cierre el modal del editor para confirmar que el post fue publicado.
 
 ### `close_browser_tool`
 - **Entrada:** `session_id` (string)

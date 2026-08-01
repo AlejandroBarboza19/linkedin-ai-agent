@@ -80,6 +80,36 @@ def _is_auth_popup(url: str) -> bool:
     return any(keyword in url for keyword in _AUTH_POPUP_KEYWORDS)
 
 
+# Tamaño mínimo de ventana en el que LinkedIn muestra todos los controles del
+# editor. Con una ventana más pequeña el layout responsivo oculta botones.
+_MIN_VIEWPORT_SIZE = {"width": 1280, "height": 800}
+
+
+async def _ensure_reasonable_viewport(session: BrowserSession) -> bool:
+    """Si la ventana del navegador es demasiado pequeña, la agranda.
+
+    LinkedIn usa layouts responsivos: con una ventana muy pequeña el botón
+    para crear el post puede ocultarse y los selectores fallan. Es best-effort:
+    si el ajuste no se puede aplicar, devuelve False y el flujo continúa.
+    Devuelve True si se agrandó la ventana.
+    """
+    page = session.page
+    if page is None:
+        return False
+    try:
+        vp = await page.viewport_size()
+        if vp and (
+            vp["width"] < _MIN_VIEWPORT_SIZE["width"]
+            or vp["height"] < _MIN_VIEWPORT_SIZE["height"]
+        ):
+            await page.set_viewport_size(_MIN_VIEWPORT_SIZE)
+            await asyncio.sleep(1)
+            return True
+    except Exception as e:
+        logger.debug("Viewport resize failed: %s", e)
+    return False
+
+
 async def open_browser(session_id: str | None = None) -> dict:
     """Abre un navegador visible (no headless) con Playwright y navega a linkedin.com/login."""
     session = sessions.create_session() if session_id is None else sessions.get_session(session_id)
@@ -199,6 +229,10 @@ async def create_post(session_id: str, content: str) -> dict:
         await session.page.goto("https://www.linkedin.com/feed/", wait_until="load", timeout=30000)
         await asyncio.sleep(2)
 
+        # Si la ventana es demasiado pequeña, LinkedIn oculta controles del
+        # editor; la agrandamos para que los selectores encuentren los botones.
+        await _ensure_reasonable_viewport(session)
+
         # Cerrar modales/upsells in-page (Premium/Plus, cookies) que puedan
         # interceptar los clics sobre el editor de posts.
         await _dismiss_inpage_modals(session)
@@ -208,9 +242,12 @@ async def create_post(session_id: str, content: str) -> dict:
         try:
             await create_btn.wait_for(timeout=5000)
         except Exception:
-            # Fallback: intentar locale en inglés o selector genérico
-            create_btn = session.page.locator('div[role="button"]').filter(has_text="Crear")
-            await create_btn.wait_for(timeout=5000)
+            try:
+                create_btn = session.page.get_by_role("button", name="Start a post")
+                await create_btn.wait_for(timeout=5000)
+            except Exception:
+                create_btn = session.page.locator('div[role="button"]').filter(has_text="Crear")
+                await create_btn.wait_for(timeout=5000)
         await create_btn.click()
 
         await asyncio.sleep(1)
@@ -226,20 +263,22 @@ async def create_post(session_id: str, content: str) -> dict:
 
         # Click en el botón de publicar automáticamente (la etiqueta varía según el locale)
         publish_btn = None
-        for label in ("Publicar", "Post"):
+        for label in ("Publicar", "Post", "Publish"):
             candidate = session.page.get_by_role("button", name=label, exact=True)
             try:
                 await candidate.wait_for(timeout=3000)
             except pw.TimeoutError:
-                publish_btn = None
-            else:
-                publish_btn = candidate
-                break
+                continue
+            publish_btn = candidate
+            break
         if publish_btn is None:
             return {
                 "status": "error",
                 "session_id": session_id,
-                "message": "Editor filled but publish button not found. Locale may have changed.",
+                "message": (
+                    "Editor filled but publish button not found. Restore the browser "
+                    "to normal size (maximize the window) and try again."
+                ),
             }
 
         await publish_btn.click()
@@ -260,7 +299,14 @@ async def create_post(session_id: str, content: str) -> dict:
             "content": content,
         }
     except pw.TimeoutError:
-        return {"status": "error", "session_id": session_id, "message": "Timeout waiting for editor elements. LinkedIn page structure may have changed."}
+        return {
+            "status": "error",
+            "session_id": session_id,
+            "message": (
+                "Timeout waiting for editor elements. Restore the browser to normal "
+                "size (maximize the window) or reload the feed and retry."
+            ),
+        }
     except Exception as e:
         return {"status": "error", "session_id": session_id, "message": f"Error creating post: {e}"}
 
