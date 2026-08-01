@@ -17,4 +17,7 @@ if [ "$#" -eq 0 ]; then
   set -- "$DEFAULT_PROMPT"
 fi
 
-exec opencode run --agent linkedin-agent "$@"
+# Modo interactivo (TUI): el agente pide confirmación por chat y el usuario
+# responde "sí". Con `opencode run` (no interactivo) no se puede responder
+# y el flujo queda bloqueado tras la pregunta de confirmación.
+exec opencode --agent linkedin-agent --prompt "$*"

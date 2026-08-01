@@ -337,7 +337,7 @@ cp .env.example .env
 .\scripts\run.cmd "Crea un post en LinkedIn diciendo Hola mundo"  # Windows (CMD)
 ```
 
-`run.sh`/`run.ps1` preparan la key y publican en un solo comando: leen `ZAI_API_KEY` de `.env`, la escriben en `.opencode/zai-key` (que opencode lee vía `{file:.opencode/zai-key}`; el archivo está gitignoreado), cambian al directorio del proyecto y ejecutan `opencode run --agent linkedin-agent` con tu instrucción.
+`run.sh`/`run.ps1` preparan la key y abren opencode en modo interactivo en un solo comando: leen `ZAI_API_KEY` de `.env`, la escriben en `.opencode/zai-key` (que opencode lee vía `{file:.opencode/zai-key}`; el archivo está gitignoreado), cambian al directorio del proyecto y abren la TUI con `opencode --agent linkedin-agent --prompt "tu instrucción"`. La TUI es **interactiva**: el agente pide confirmación por chat y tú respondes **"sí"** ahí mismo (en `opencode run` no interactivo no se puede responder y el flujo se bloquea).
 
 Sin argumento, el script publica un post **"Hola mundo"** por defecto (demo en un solo comando). Si pasas una instrucción, usa la tuya:
 
@@ -359,7 +359,7 @@ opencode                  # ya listo, sin exportar nada
 
 ### Nota sobre permisos de OpenCode
 
-Si OpenCode bloquea el acceso al proyecto como *"directorio externo"* (típico en `opencode run` no interactivo), el `opencode.jsonc` ya incluye una regla de `permission` para permitir `$HOME/**`. Como alternativa, ejecuta con auto-aprobación:
+La TUI interactiva gestiona los permisos por pantalla. Si alguna vez usas `opencode run` no interactivo y OpenCode bloquea el acceso al proyecto como *"directorio externo"*, el `opencode.jsonc` ya incluye una regla de `permission` para permitir `$HOME/**`. Como alternativa, ejecuta con auto-aprobación:
 
 ```bash
 opencode run --auto --agent linkedin-agent "Escribe un post sobre tendencias de IA"
